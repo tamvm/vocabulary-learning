@@ -11,6 +11,7 @@ const Dashboard = React.lazy(() => import('./pages/Dashboard'))
 const Vocabulary = React.lazy(() => import('./pages/Vocabulary'))
 const Groups = React.lazy(() => import('./pages/Groups'))
 const QuizQuestions = React.lazy(() => import('./pages/QuizQuestions'))
+const Learn = React.lazy(() => import('./pages/Learn'))
 const Study = React.lazy(() => import('./pages/Study'))
 const Scoring = React.lazy(() => import('./pages/Scoring'))
 const Profile = React.lazy(() => import('./pages/Profile'))
@@ -61,6 +62,7 @@ function App() {
               <Route path="/vocabulary" element={<Vocabulary />} />
               <Route path="/groups" element={<Groups />} />
               <Route path="/quiz-questions" element={<QuizQuestions />} />
+              <Route path="/learn" element={<Learn />} />
               <Route path="/study" element={<Study />} />
               <Route path="/scoring" element={<Scoring />} />
               <Route path="/profile" element={<Profile />} />

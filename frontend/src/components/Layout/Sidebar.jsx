@@ -6,6 +6,7 @@ import {
   FolderOpen,
   BrainCircuit,
   PenTool,
+  Play,
   User,
   Settings,
   Sparkles,
@@ -37,6 +38,11 @@ const navigation = [
     name: 'Study',
     href: '/study',
     icon: BrainCircuit,
+  },
+  {
+    name: 'Learn',
+    href: '/learn',
+    icon: Play,
   },
   {
     name: 'Sentence Scoring',

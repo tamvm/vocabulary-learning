@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3012/api',
   timeout: 120000, // Increased to 2 minutes for content analysis
   headers: {
     'Content-Type': 'application/json',
@@ -221,6 +221,23 @@ export const groupsAPI = {
     const response = await api.delete(`/groups/${id}`)
     return response.data
   },
+}
+
+export const youtubeAPI = {
+  analyze: (videoUrl) =>
+    api.post('/youtube/analyze', { videoUrl }),
+
+  generateQuiz: (videoUrl, vocabularyWordIds) =>
+    api.post('/youtube/quiz', { videoUrl, vocabularyWordIds }),
+
+  complete: (data) =>
+    api.post('/youtube/complete', data),
+
+  markKnown: (word, known) =>
+    api.post('/youtube/mark-known', { word, known }),
+
+  getHistory: () =>
+    api.get('/youtube/history'),
 }
 
 export default api
