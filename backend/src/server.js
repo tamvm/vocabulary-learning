@@ -10,13 +10,14 @@ import aiRoutes from './routes/ai.js';
 import profileRoutes from './routes/profile.js';
 import flashcardRoutes from './routes/flashcards.js';
 import groupsRoutes from './routes/groups.js';
+import youtubeRoutes from './routes/youtube.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 3012;
 
 // Trust proxy when deployed behind a reverse proxy (Railway, Heroku, etc.)
 if (process.env.NODE_ENV === 'production') {
@@ -42,7 +43,7 @@ app.use(limiter);
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
     ? process.env.FRONTEND_URL
-    : ['http://localhost:3000', 'http://localhost:5173'], // Vite default port
+    : ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:5173'], // Vite dev ports
   credentials: true,
 }));
 
@@ -77,6 +78,7 @@ app.use('/api/ai', authMiddleware, aiRoutes);
 app.use('/api/profile', authMiddleware, profileRoutes);
 app.use('/api/flashcards', authMiddleware, flashcardRoutes);
 app.use('/api/groups', authMiddleware, groupsRoutes);
+app.use('/api/youtube', authMiddleware, youtubeRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
