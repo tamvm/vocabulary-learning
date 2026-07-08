@@ -1,0 +1,12 @@
+[variables]
+NODE_VERSION = "20.18.1"
+PORT = "3112"
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm"]
+
+[phases.install]
+cmds = ["cd backend && npm install --production=false"]
+
+[start]
+cmd = "cd backend && node src/server.js"

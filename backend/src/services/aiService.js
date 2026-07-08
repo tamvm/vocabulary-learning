@@ -12,6 +12,10 @@ class AIService {
         baseUrl: 'https://api.openai.com/v1',
         defaultModel: 'gpt-4o-mini',
       },
+      'opencode': {
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        defaultModel: 'deepseek-v4-flash',
+      },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
         defaultModel: 'llama3.2:latest',
@@ -639,7 +643,7 @@ Provide only valid JSON without additional text.`;
     };
 
     // Add authentication based on provider
-    if (this.config.provider === 'ollama-cloud' || this.config.provider === 'openai') {
+    if (this.config.provider === 'ollama-cloud' || this.config.provider === 'openai' || this.config.provider === 'opencode') {
       if (!this.config.apiKey) {
         throw new Error('API key is required for this provider');
       }

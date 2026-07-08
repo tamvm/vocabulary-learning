@@ -4,9 +4,10 @@
   "description": "Magic English - AI-Powered Vocabulary Learning Web App",
   "type": "module",
   "scripts": {
-    "dev": "npm-run-all --parallel dev:server dev:client",
+    "dev": "npm run kill-ports && npm-run-all --parallel dev:server dev:client",
     "dev:server": "cd backend && npm run dev",
     "dev:client": "cd frontend && npm run dev",
+    "kill-ports": "lsof -ti:3002 -ti:3012 | xargs kill -9 2>/dev/null; sleep 0.5; echo 'Ports 3002,3012 cleared'",
     "build": "npm-run-all build:server build:client",
     "build:server": "cd backend && npm run build",
     "build:client": "cd frontend && npm run build",

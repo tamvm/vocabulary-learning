@@ -1,5 +1,6 @@
 [variables]
 NODE_VERSION = "20.18.1"
+PORT = "3102"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm"]
@@ -8,7 +9,7 @@ nixPkgs = ["nodejs_20", "npm"]
 cmds = ["npm install --production=false"]
 
 [phases.build]
-cmds = ["npm run build --workspace=magic-english-frontend", "ls -la frontend/dist", "cp -r frontend/dist ./"]
+cmds = ["cd frontend && npm run build"]
 
 [start]
 cmd = "npx serve -s frontend/dist -p $PORT --single"
