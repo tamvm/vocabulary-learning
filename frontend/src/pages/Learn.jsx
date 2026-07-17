@@ -125,10 +125,10 @@ function StepVocab({
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [selectedIndices, setSelectedIndices] = useState(() => {
-    // Pre-select all words that aren't known
+    // Pre-select only truly new words (not known, not already in vocabulary)
     const set = new Set();
     vocabulary.forEach((item, idx) => {
-      if (!item.isKnown) set.add(idx);
+      if (!item.isKnown && !item.isLearned) set.add(idx);
     });
     return set;
   });
@@ -183,7 +183,8 @@ function StepVocab({
   };
 
   const knownCount = vocabulary.filter((v) => v.isKnown).length;
-  const newCount = vocabulary.length - knownCount;
+  const learnedCount = vocabulary.filter((v) => v.isLearned && !v.isKnown).length;
+  const newCount = vocabulary.length - knownCount - learnedCount;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -215,6 +216,10 @@ function StepVocab({
           <span className="text-gray-600 dark:text-gray-400">
             <Sparkles className="w-4 h-4 inline mr-1 text-primary-500" />
             {newCount} new
+          </span>
+          <span className="text-gray-500 dark:text-gray-400">
+            <BookOpen className="w-4 h-4 inline mr-1" />
+            {learnedCount} learned
           </span>
           <span className="text-gray-500 dark:text-gray-400">
             <ThumbsUp className="w-4 h-4 inline mr-1" />
@@ -289,7 +294,7 @@ function StepVocab({
                 )}
               </div>
 
-              {/* Know/Don't know toggle */}
+              {/* Know/Learned toggle */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -298,11 +303,19 @@ function StepVocab({
                 className={`flex-shrink-0 px-2 py-1 rounded text-xs font-medium transition ${
                   item.isKnown
                     ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                    : item.isLearned
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-green-100 dark:hover:bg-green-900/30'
                 }`}
-                title={item.isKnown ? 'Mark as unknown' : 'I already know this'}
+                title={
+                  item.isKnown
+                    ? 'Mark as unknown'
+                    : item.isLearned
+                    ? 'Already in your vocabulary'
+                    : 'I already know this'
+                }
               >
-                {item.isKnown ? 'Known' : 'New'}
+                {item.isKnown ? 'Known' : item.isLearned ? 'Learned' : 'New'}
               </button>
             </div>
           );
@@ -707,24 +720,35 @@ export default function Learn() {
 
   // ── Step 2: Mark known ───────────────────────────────
   const handleToggleKnown = async (word, known) => {
+    // If the word is already in vocabulary (isLearned), clicking marks it as known too
+    // This prevents it from appearing in future analyses
+    const item = vocabulary.find(
+      (v) => v.word.toLowerCase() === word.toLowerCase()
+    );
+    const currentlyKnown = item?.isKnown;
+    const currentlyLearned = item?.isLearned;
+
+    // Cycle: New → Known → New,  Learned → Known
+    const newKnown = currentlyLearned ? true : !currentlyKnown;
+
     // Optimistic update
     setVocabulary((prev) =>
       prev.map((item) =>
         item.word.toLowerCase() === word.toLowerCase()
-          ? { ...item, isKnown: known }
+          ? { ...item, isKnown: newKnown }
           : item
       )
     );
 
     try {
-      await youtubeAPI.markKnown(word, known);
+      await youtubeAPI.markKnown(word, newKnown);
     } catch (err) {
       console.error('Failed to mark known:', err);
       // Revert
       setVocabulary((prev) =>
         prev.map((item) =>
           item.word.toLowerCase() === word.toLowerCase()
-            ? { ...item, isKnown: !known }
+            ? { ...item, isKnown: currentlyKnown }
             : item
         )
       );
@@ -742,6 +766,11 @@ export default function Learn() {
 
       if (response.data.words) {
         toast.success(`Added ${response.data.words.length} words to your vocabulary`);
+
+        // Auto-mark saved words as known to skip them in future analyses
+        for (const w of wordsToLearn) {
+          try { await youtubeAPI.markKnown(w.word, true); } catch (_) {}
+        }
 
         // Update lesson
         if (lessonId) {

@@ -57,16 +57,18 @@ router.post('/analyze', async (req, res, next) => {
     const { content, title, videoInfo } = transcriptResult;
     const videoId = youtubeTranscriptService.extractVideoId(videoUrl);
 
-    // Step 3: Get user's known words to pre-filter
+    // Step 3: Get user's known words + existing vocabulary
     let knownWords = new Set();
+    let learnedWords = new Set();
     try {
-      const { data: known } = await req.supabase
-        .from('known_words')
-        .select('word')
-        .eq('user_id', req.user.id);
-      knownWords = new Set((known || []).map(k => k.word.toLowerCase()));
+      const [knownResult, wordsResult] = await Promise.all([
+        req.supabase.from('known_words').select('word').eq('user_id', req.user.id),
+        req.supabase.from('words').select('word').eq('user_id', req.user.id),
+      ]);
+      knownWords = new Set((knownResult.data || []).map(k => k.word.toLowerCase()));
+      learnedWords = new Set((wordsResult.data || []).map(w => w.word.toLowerCase()));
     } catch (err) {
-      console.log('Could not fetch known words:', err.message);
+      console.log('Could not fetch known/learned words:', err.message);
     }
 
     // Step 4: AI vocabulary extraction
@@ -76,10 +78,11 @@ router.post('/analyze', async (req, res, next) => {
       chunksToProcess: 6, // YouTube transcripts can be long
     });
 
-    // Step 5: Mark known words
+    // Step 5: Mark known + learned words
     const vocabulary = (result.vocabulary || []).map(item => ({
       ...item,
       isKnown: knownWords.has(item.word.toLowerCase()),
+      isLearned: learnedWords.has(item.word.toLowerCase()),
     }));
 
     // Step 6: Save video lesson record
@@ -121,7 +124,8 @@ router.post('/analyze', async (req, res, next) => {
       userCefrLevel,
       totalFound: vocabulary.length,
       knownCount: vocabulary.filter(v => v.isKnown).length,
-      newCount: vocabulary.filter(v => !v.isKnown).length,
+      learnedCount: vocabulary.filter(v => v.isLearned && !v.isKnown).length,
+      newCount: vocabulary.filter(v => !v.isKnown && !v.isLearned).length,
     });
   } catch (error) {
     console.error('YouTube analyze error:', error);
