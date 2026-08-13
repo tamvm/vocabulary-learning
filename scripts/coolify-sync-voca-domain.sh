@@ -58,12 +58,12 @@ coolify() {
   fi
   http="$(curl "${curl_args[@]}" "$@")"
   if [ "$http" != "200" ] && [ "$http" != "201" ] && [ "$http" != "202" ]; then
-    echo "::error::Coolify ${method} ${path} failed (HTTP ${http})"
+    echo "::error::Coolify ${method} ${path} failed (HTTP ${http})" >&2
     python3 -c 'import json,sys; p=sys.argv[1];
 try:
-  d=json.load(open(p)); print(d.get("message") or d.get("error") or "see Coolify response")
+  d=json.load(open(p)); print(d.get("message") or d.get("error") or "see Coolify response", file=sys.stderr)
 except Exception:
-  print(open(p).read()[:400])' "$tmp"
+  print(open(p).read()[:400], file=sys.stderr)' "$tmp"
     rm -f "$tmp"
     return 1
   fi
