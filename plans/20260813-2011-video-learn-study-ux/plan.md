@@ -220,18 +220,19 @@ Extend `youtubeAPI` in `frontend/src/lib/api.js` for enriched analyze + quiz bod
 
 ### Phase 1 — Transcript foundation (backend)
 
-**Goal:** cues + chapters metadata + DB cache; analyze returns data Study needs.
+**Goal:** cues via Transcript24 (fallback yt-dlp) + DB cache; analyze returns Study data.
 
 | ID | Task | Files |
 |----|------|-------|
-| T1.1 | Return `cues` from `processYouTubeUrl`; stop discarding timestamps | `youtubeTranscriptService.js` |
-| T1.2 | Pass `chapters` + thumbnail from yt-dlp dump | same |
+| T1.0 | `transcript24Service` — POST `/transcribe`, map captions → cues | `services/transcript24Service.js` |
+| T1.1 | Orchestrator: T24 first → yt-dlp fallback; unified return shape | `youtubeTranscriptService.js` or wrapper |
+| T1.2 | yt-dlp path keeps VTT cues + chapters from dump-json | same |
 | T1.3 | Migration `14_video_lessons_study_cache.sql` | `backend/sql/` |
-| T1.4 | Persist cues/text/chapters/duration on analyze insert/update | `routes/youtube.js` |
-| T1.5 | Return full `cues` (+ YT chapters) from `/analyze` | `routes/youtube.js` |
-| T1.6 | Quiz prefers cached `transcript_text` via `lessonId` | `routes/youtube.js` |
+| T1.4 | Persist cues/text/chapters/duration (+ provider) on analyze | `routes/youtube.js` |
+| T1.5 | Return full `cues` from `/analyze` | `routes/youtube.js` |
+| T1.6 | Quiz prefers cached transcript via `lessonId` | `routes/youtube.js` |
 
-**Verify:** analyze a short EN-caption video → JSON has `cues[].start` and non-empty text; quiz with `lessonId` does not re-call yt-dlp when cache present.
+**Verify:** with `TRANSCRIPT24_API_KEY`, analyze returns timed cues; without key, yt-dlp fallback; quiz with `lessonId` skips external re-fetch.
 
 ### Phase 2 — Study UI (frontend)
 
@@ -297,11 +298,14 @@ Extend `youtubeAPI` in `frontend/src/lib/api.js` for enriched analyze + quiz bod
 
 | Risk | Mitigation |
 |------|------------|
-| Auto-captions noisy / overlapping | Light cue merge; don’t block on perfect VTT |
+| Transcript24 key missing in cloud/prod | Fallback yt-dlp; document Hermes → Coolify secret |
+| Transcript24 credits exhausted | Clear API error; fallback yt-dlp; log `taskCredits` |
+| Auto-captions noisy / overlapping | Light cue merge; don’t block on perfect timing |
 | Large cue payloads | Cap / merge cues; JSONB OK for typical lengths |
 | AI cost (vocab + summary + quiz) | Combined summary/chapter call; cache transcript; quiz uses cache |
 | YouTube embed restrictions | IFrame API; fallback message if embed disabled |
 | `Learn.jsx` size | Split components in Phase 2 — do not grow the monolith |
+| Scene detection cost | Disabled in MVP (`prefer: auto` only) |
 
 ## Success criteria (MVP)
 
