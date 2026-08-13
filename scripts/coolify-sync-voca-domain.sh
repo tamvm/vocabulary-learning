@@ -13,25 +13,76 @@ COOLIFY_BASE_URL="${COOLIFY_BASE_URL:-http://localhost:8000}"
 SSLIP_FRONTEND="http://zsq5wwe7xltdrrlp5ldctr3g.178.156.247.159.sslip.io"
 SSLIP_BACKEND="http://yydjqewjghoex53en4o0je43.178.156.247.159.sslip.io"
 
-resolve_token() {
-  if [ -n "${COOLIFY_API_TOKEN:-}" ]; then
-    echo "Using COOLIFY_API_TOKEN from environment"
-    return 0
-  fi
-  local candidates=(
-    "${HOME}/.coolify/github-actions.token"
-    "${HOME}/.coolify-tokens-rotated-2026-08-08/github-actions.txt"
-  )
+token_can_read_apps() {
+  local token="$1" tmp http
+  tmp="$(mktemp)"
+  http="$(curl -sS --max-time 30 -o "$tmp" -w "%{http_code}" \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/json" \
+    "${COOLIFY_BASE_URL%/}/api/v1/applications/${FRONTEND_UUID}" || true)"
+  rm -f "$tmp"
+  [ "$http" = "200" ]
+}
+
+collect_token_files() {
+  local -a files=()
   local f
-  for f in "${candidates[@]}"; do
-    if [ -f "$f" ]; then
-      COOLIFY_API_TOKEN="$(tr -d '[:space:]' <"$f")"
-      export COOLIFY_API_TOKEN
-      echo "Using Coolify API token from runner file: $f"
+  for f in \
+    "${HOME}/.coolify/github-actions.token" \
+    "${HOME}/.coolify/api.token" \
+    "${HOME}/.coolify/root.token" \
+    "${HOME}/.coolify/write.token" \
+    "${HOME}/.coolify-tokens-rotated-2026-08-08/github-actions.txt" \
+    "${HOME}/.coolify-tokens-rotated-2026-08-08/"*.txt \
+    "${HOME}/.coolify/"*.token \
+    "${HOME}/.coolify/"*.txt
+  do
+    [ -f "$f" ] || continue
+    files+=("$f")
+  done
+  # Deduplicate while preserving order
+  printf '%s\n' "${files[@]}" | awk 'NF && !seen[$0]++'
+}
+
+resolve_token() {
+  local -a files=()
+  local f token
+  local env_token="${COOLIFY_API_TOKEN:-}"
+
+  mapfile -t files < <(collect_token_files)
+
+  if [ -n "$env_token" ]; then
+    if token_can_read_apps "$env_token"; then
+      echo "Using COOLIFY_API_TOKEN from environment (has application read)"
       return 0
     fi
+    echo "COOLIFY_API_TOKEN from environment cannot read applications; trying runner files..."
+  fi
+
+  echo "Scanning Coolify token files on runner (names only):"
+  if [ "${#files[@]}" -eq 0 ]; then
+    echo "  (none found under ~/.coolify*)"
+  else
+    for f in "${files[@]}"; do
+      echo "  - $f"
+    done
+  fi
+
+  for f in "${files[@]}"; do
+    token="$(tr -d '[:space:]' <"$f")"
+    [ -n "$token" ] || continue
+    if token_can_read_apps "$token"; then
+      COOLIFY_API_TOKEN="$token"
+      export COOLIFY_API_TOKEN
+      echo "Using Coolify API token from runner file: $f (has application read)"
+      return 0
+    fi
+    echo "  skip $f (no application read / deploy-only)"
   done
-  echo "::error::Missing Coolify API token"
+
+  echo "::error::No Coolify API token with application read+write found."
+  echo "::error::Deploy-only tokens can queue deploys but cannot PATCH FQDN/env (HTTP 403)."
+  echo "::error::Create a Coolify token with read/write (or *), store as secret COOLIFY_API_TOKEN or ~/.coolify/api.token on the runner."
   exit 1
 }
 
