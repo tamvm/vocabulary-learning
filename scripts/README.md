@@ -2,6 +2,16 @@
 
 This directory contains utility scripts for managing the Magic English application.
 
+## Supabase keep-alive
+
+Ping free-tier Supabase so the project does not auto-pause. See [docs/supabase-keepalive.md](../docs/supabase-keepalive.md).
+
+```bash
+npm run supabase:keepalive
+```
+
+Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`) in `backend/.env`.
+
 ## Reset Today's Learning
 
 Reset all flashcards that were studied today back to their previous state, effectively undoing today's learning progress.

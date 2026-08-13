@@ -16,7 +16,8 @@
     "test": "cd backend && npm test",
     "lint": "cd frontend && npm run lint",
     "reset-today": "./scripts/reset-today.sh",
-    "reset-today:dry-run": "./scripts/reset-today.sh --dry-run"
+    "reset-today:dry-run": "./scripts/reset-today.sh --dry-run",
+    "supabase:keepalive": "node scripts/supabase-keepalive.js"
   },
   "workspaces": [
     "backend",

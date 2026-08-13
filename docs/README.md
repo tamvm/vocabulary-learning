@@ -7,6 +7,7 @@ This folder contains all the detailed documentation for the Magic English applic
 ### 🚀 Deployment & Setup
 - **[Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md)** - Production Coolify project `i8luqt7n49kugwqwfbcyrfvl` + deploy-on-merge via Actions
 - **[Self-hosted CI runner](ci-self-hosted-runner.md)** - GitHub Actions self-hosted runner for CI
+- **[Supabase keep-alive](supabase-keepalive.md)** - Cron ping so free-tier Supabase does not auto-pause
 - **[Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)** - Legacy Railway notes (Coolify is preferred)
 - **[GitHub Setup Guide](GITHUB_SETUP.md)** - Setting up GitHub repository and workflows
 - **[Migration Guide](MIGRATION_GUIDE.md)** - Database migrations and version updates
