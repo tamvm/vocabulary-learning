@@ -7,7 +7,7 @@ AI-powered vocabulary learning web app (Magic English). Multi-user, Supabase-bac
 - **Database**: PostgreSQL via Supabase (RLS, auth, realtime)
 - **AI**: Multiple providers (Ollama Cloud, OpenAI, local Ollama)
 - **CI**: Self-hosted GitHub Actions (`.github/workflows/ci.yml`) — see `docs/ci-self-hosted-runner.md`
-- **Deploy**: Coolify on Hetzner (Docker; project `ik6tx8h3y70t1zvuyqvb9et1`) — see `docs/COOLIFY_DEPLOYMENT.md`
+- **Deploy**: Coolify on Hetzner (Docker; project `i8luqt7n49kugwqwfbcyrfvl`) — see `docs/COOLIFY_DEPLOYMENT.md`; merge to `main`/`master` runs CI then `.github/workflows/coolify-deploy.yml`
   - Backend / frontend Dockerfiles under `backend/` and `frontend/`
   - Legacy Railway/Nixpacks files may still exist; Coolify is the production path
 
@@ -79,7 +79,7 @@ docs/                   # setup, CI runner, deploy notes
 - Branch hazard: always verify current branch before git ops
 - **PRs — always open / ready for review (never draft)** unless the user explicitly asks for a draft. `ManagePullRequest` `create_pr` must pass `draft: false`. Automation may create a draft — immediately `gh pr ready <N>` and verify `isDraft: false`
 - **PR reviews — fix or reply, never ignore:** every review comment/thread (human or bot) must be either fixed in code or answered on GitHub explaining why it is not relevant. Do not mark `[ready]` or merge with unanswered reviews.
-- Production: Coolify project id `ik6tx8h3y70t1zvuyqvb9et1` — push to `main` auto-deploys when Auto Deploy is enabled
+- Production: Coolify project id `i8luqt7n49kugwqwfbcyrfvl` — after CI on `main`/`master`, `coolify-deploy.yml` queues backend + frontend
 - Do not change Coolify env/secrets as part of routine deploy
 
 ### UI Changes
