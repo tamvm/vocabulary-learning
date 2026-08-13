@@ -745,7 +745,9 @@ export default function Learn() {
     try {
       const response = await youtubeAPI.saveProgress(id, data);
       if (response.data?.skipped) {
-        console.warn('Lesson progress not persisted (migration may be pending)');
+        toast.error('Progress sync unavailable — apply DB migration to enable cross-device resume', {
+          id: 'learn-progress-skipped',
+        });
       }
     } catch (err) {
       console.warn('Could not save lesson progress:', err.message);
