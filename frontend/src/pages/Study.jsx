@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -15,7 +15,7 @@ import {
 import { useFlashcards } from '../hooks/useFlashcards';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { flashcardAPI } from '../lib/api';
-import { compareQuizAnswers } from '../lib/utils';
+import { compareQuizAnswers, speakWord } from '../lib/utils';
 import LoadingSpinner from '../components/UI/LoadingSpinner';
 import FlashCard from '../components/Flashcards/FlashCard';
 import QuizQuestion from '../components/Flashcards/QuizQuestion';
@@ -46,8 +46,11 @@ const Study = () => {
   const [showSessionEnd, setShowSessionEnd] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isRatingInProgress, setIsRatingInProgress] = useState(false);
+  const [flashedRating, setFlashedRating] = useState(null);
   const [reviewedCards, setReviewedCards] = useState([]);
   const [showReview, setShowReview] = useState(false);
+  const RATING_FLASH_MS = 280;
+  const shortcutHandlersRef = useRef({});
 
   // Quiz mode state
   const [studyMode, setStudyMode] = useState('flashcard'); // 'flashcard' or 'quiz'
@@ -93,6 +96,7 @@ const Study = () => {
       setCardStartTime(Date.now());
       setIsFlipped(false);
       setIsRatingInProgress(false);
+      setFlashedRating(null);
     }
   }, [currentCard, studyMode]);
 
@@ -292,124 +296,13 @@ const Study = () => {
     }
   };
 
-  // Keyboard shortcuts
-  const handleKeyPress = useCallback((event) => {
-    if (showSessionEnd || isRatingInProgress) {
-      return;
-    }
-
-    // Prevent default for all our shortcuts
-    const shortcuts = ['Space', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'F1', 'F2', 'F3', 'F4', 'Enter', 'KeyS', 'KeyE', 'Escape'];
-    if (shortcuts.includes(event.code)) {
-      event.preventDefault();
-    }
-
-    // Global shortcuts - E key for shortcuts
-    if (event.code === 'KeyE') {
-      setShowShortcutsHelp(!showShortcutsHelp);
-      return;
-    }
-
-    switch (event.code) {
-      case 'Space':
-        if (studyMode === 'flashcard') {
-          setIsFlipped(!isFlipped);
-        } else if (studyMode === 'quiz' && showQuizAnswer) {
-          handleQuizNext();
-        }
-        break;
-      case 'Digit1':
-        if (studyMode === 'flashcard') {
-          handleCardRating(2);  // Map 1 to Hard (rating 2)
-        } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
-          // Select first option in quiz
-          if (currentQuestion.options && currentQuestion.options.length > 0) {
-            handleQuizAnswer(currentQuestion.options[0]);
-          }
-        }
-        break;
-      case 'Digit2':
-        if (studyMode === 'flashcard') {
-          handleCardRating(3);  // Map 2 to Good (rating 3)
-        } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
-          // Select second option in quiz
-          if (currentQuestion.options && currentQuestion.options.length > 1) {
-            handleQuizAnswer(currentQuestion.options[1]);
-          }
-        }
-        break;
-      case 'Digit3':
-        if (studyMode === 'flashcard') {
-          handleCardRating(4);  // Map 3 to Easy (rating 4)
-        } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
-          // Select third option in quiz
-          if (currentQuestion.options && currentQuestion.options.length > 2) {
-            handleQuizAnswer(currentQuestion.options[2]);
-          }
-        }
-        break;
-      case 'Digit4':
-        if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
-          // Select fourth option in quiz
-          if (currentQuestion.options && currentQuestion.options.length > 3) {
-            handleQuizAnswer(currentQuestion.options[3]);
-          }
-        }
-        break;
-
-      // F1, F2, F3 keys for flashcard ratings only
-      case 'F1':
-        if (studyMode === 'flashcard') {
-          handleCardRating(2);  // Map F1 to Hard (rating 2)
-        }
-        break;
-
-      case 'F2':
-        if (studyMode === 'flashcard') {
-          handleCardRating(3);  // Map F2 to Good (rating 3)
-        }
-        break;
-
-      case 'F3':
-        if (studyMode === 'flashcard') {
-          handleCardRating(4);  // Map F3 to Easy (rating 4)
-        }
-        break;
-
-      case 'F4':
-        if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
-          if (currentQuestion.options && currentQuestion.options.length > 3) {
-            handleQuizAnswer(currentQuestion.options[3]);
-          }
-        }
-        break;
-      case 'Enter':
-        if (studyMode === 'quiz' && showQuizAnswer) {
-          handleQuizNext();
-        }
-        break;
-      case 'KeyS':
-        handleSkipCard();
-        break;
-      case 'Escape':
-        if (showShortcutsHelp) {
-          setShowShortcutsHelp(false);
-        } else {
-          handleEndSession();
-        }
-        break;
-    }
-  }, [isFlipped, showSessionEnd, showShortcutsHelp, isRatingInProgress, studyMode, showQuizAnswer, currentQuestion, quizAnswer]);
-
-  useKeyboardShortcuts(handleKeyPress);
-
-  const handleCardRating = async (rating) => {
+  const handleCardRating = useCallback(async (rating) => {
     if (!currentCard || isRatingInProgress) {
-      console.log('No currentCard available or rating already in progress');
       return;
     }
 
     setIsRatingInProgress(true);
+    setFlashedRating(rating);
 
     // Set cardStartTime if it doesn't exist (for immediate rating)
     const startTime = cardStartTime || Date.now();
@@ -419,7 +312,10 @@ const Study = () => {
     const cardToReview = { ...currentCard };
 
     try {
-      // This now switches to next card instantly
+      // Brief flash so shortcut/click choice is visible before advancing
+      await new Promise((resolve) => setTimeout(resolve, RATING_FLASH_MS));
+      setFlashedRating(null);
+
       await reviewCard(cardToReview.id, rating, responseTime);
 
       // Track this card for review if it was hard (rating <= 2) or if user wants to review
@@ -434,15 +330,18 @@ const Study = () => {
       setReviewedCards(prev => [...prev, reviewedCard]);
 
       // Update stats
-      const newCardsStudied = studyStats.cardsStudied + 1;
-      setStudyStats(prev => ({
-        ...prev,
-        cardsStudied: newCardsStudied,
-        totalAnswers: prev.totalAnswers + 1,
-        correctAnswers: prev.correctAnswers + (rating >= 3 ? 1 : 0),
-        newCards: prev.newCards + (cardToReview.state === 'new' ? 1 : 0),
-        reviewCards: prev.reviewCards + (cardToReview.state !== 'new' ? 1 : 0),
-      }));
+      let newCardsStudied = 0;
+      setStudyStats(prev => {
+        newCardsStudied = prev.cardsStudied + 1;
+        return {
+          ...prev,
+          cardsStudied: newCardsStudied,
+          totalAnswers: prev.totalAnswers + 1,
+          correctAnswers: prev.correctAnswers + (rating >= 3 ? 1 : 0),
+          newCards: prev.newCards + (cardToReview.state === 'new' ? 1 : 0),
+          reviewCards: prev.reviewCards + (cardToReview.state !== 'new' ? 1 : 0),
+        };
+      });
 
       // Show review page after 10 cards
       if (newCardsStudied % 10 === 0) {
@@ -457,9 +356,122 @@ const Study = () => {
     } catch (error) {
       console.error('Failed to review card:', error);
     } finally {
+      setFlashedRating(null);
       setIsRatingInProgress(false);
     }
-  };
+  }, [currentCard, isRatingInProgress, cardStartTime, reviewCard]);
+
+  // Keyboard shortcuts
+  const handleKeyPress = useCallback((event) => {
+    if (showSessionEnd || isRatingInProgress) {
+      return;
+    }
+
+    const { key, code } = event;
+    const isDigit1 = key === '1' || code === 'Digit1' || code === 'Numpad1';
+    const isDigit2 = key === '2' || code === 'Digit2' || code === 'Numpad2';
+    const isDigit3 = key === '3' || code === 'Digit3' || code === 'Numpad3';
+    const isDigit4 = key === '4' || code === 'Digit4' || code === 'Numpad4';
+
+    // Prevent default for all our shortcuts
+    const shortcuts = ['Space', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Enter', 'KeyS', 'KeyE', 'KeyP', 'Escape'];
+    if (
+      shortcuts.includes(code) ||
+      key === '1' || key === '2' || key === '3' || key === '4' ||
+      key === ' ' || key === 's' || key === 'S' || key === 'e' || key === 'E' ||
+      key === 'p' || key === 'P' || key === 'Escape'
+    ) {
+      event.preventDefault();
+    }
+
+    const handlers = shortcutHandlersRef.current;
+
+    // Global shortcuts - E key for shortcuts
+    if (code === 'KeyE' || key === 'e' || key === 'E') {
+      setShowShortcutsHelp((prev) => !prev);
+      return;
+    }
+
+    if (code === 'Space' || key === ' ') {
+      if (studyMode === 'flashcard') {
+        setIsFlipped((prev) => !prev);
+      } else if (studyMode === 'quiz' && showQuizAnswer) {
+        handlers.handleQuizNext();
+      }
+      return;
+    }
+
+    if (isDigit1) {
+      if (studyMode === 'flashcard') {
+        handlers.handleCardRating(2); // Hard
+      } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
+        if (currentQuestion.options?.length > 0) {
+          handlers.handleQuizAnswer(currentQuestion.options[0]);
+        }
+      }
+      return;
+    }
+
+    if (isDigit2) {
+      if (studyMode === 'flashcard') {
+        handlers.handleCardRating(3); // Good
+      } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
+        if (currentQuestion.options?.length > 1) {
+          handlers.handleQuizAnswer(currentQuestion.options[1]);
+        }
+      }
+      return;
+    }
+
+    if (isDigit3) {
+      if (studyMode === 'flashcard') {
+        handlers.handleCardRating(4); // Easy
+      } else if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
+        if (currentQuestion.options?.length > 2) {
+          handlers.handleQuizAnswer(currentQuestion.options[2]);
+        }
+      }
+      return;
+    }
+
+    if (isDigit4) {
+      if (studyMode === 'quiz' && currentQuestion && !showQuizAnswer) {
+        if (currentQuestion.options?.length > 3) {
+          handlers.handleQuizAnswer(currentQuestion.options[3]);
+        }
+      }
+      return;
+    }
+
+    if (code === 'Enter' || key === 'Enter') {
+      if (studyMode === 'quiz' && showQuizAnswer) {
+        handlers.handleQuizNext();
+      }
+      return;
+    }
+
+    if (code === 'KeyP' || key === 'p' || key === 'P') {
+      if (studyMode === 'flashcard' && currentCard?.words?.word) {
+        speakWord(currentCard.words.word);
+      }
+      return;
+    }
+
+    if (code === 'KeyS' || key === 's' || key === 'S') {
+      handlers.handleSkipCard();
+      return;
+    }
+
+    if (code === 'Escape' || key === 'Escape') {
+      if (showShortcutsHelp) {
+        setShowShortcutsHelp(false);
+      } else {
+        handlers.handleEndSession();
+      }
+    }
+  }, [showSessionEnd, showShortcutsHelp, isRatingInProgress, studyMode, showQuizAnswer, currentQuestion, currentCard]);
+
+  useKeyboardShortcuts(handleKeyPress);
 
   const handleSkipCard = () => {
     console.log('Skipping card');
@@ -506,6 +518,15 @@ const Study = () => {
     } catch (error) {
       console.error('Failed to end session:', error);
     }
+  };
+
+  // Keep shortcut handlers fresh without stale useCallback closures
+  shortcutHandlersRef.current = {
+    handleCardRating,
+    handleSkipCard,
+    handleEndSession,
+    handleQuizAnswer,
+    handleQuizNext,
   };
 
   // Show review screen
@@ -899,6 +920,7 @@ const Study = () => {
                 onRate={handleCardRating}
                 showRating={true}
                 isRatingInProgress={isRatingInProgress}
+                flashedRating={flashedRating}
               />
             ) : (
               // Quiz Mode
@@ -949,7 +971,8 @@ const Study = () => {
               )}
               {studyMode === 'flashcard' && (
                 <span className="ml-4">
-                  • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">F1-F3</kbd> for rating
+                  • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">1-3</kbd> for rating
+                  • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">P</kbd> to pronounce
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">Space</kbd> to flip
                 </span>
               )}
@@ -997,15 +1020,19 @@ const Study = () => {
                 )}
                 <div className="flex justify-between">
                   <span>Hard:</span>
-                  <span><kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">F1</kbd> or <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">1</kbd></span>
+                  <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">1</kbd>
                 </div>
                 <div className="flex justify-between">
                   <span>Good:</span>
-                  <span><kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">F2</kbd> or <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">2</kbd></span>
+                  <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">2</kbd>
                 </div>
                 <div className="flex justify-between">
                   <span>Easy:</span>
-                  <span><kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">F3</kbd> or <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">3</kbd></span>
+                  <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">3</kbd>
+                </div>
+                <div className="flex justify-between">
+                  <span>Pronounce:</span>
+                  <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">P</kbd>
                 </div>
 
                 <h4 className="font-medium text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-600 pb-1 mt-4">
