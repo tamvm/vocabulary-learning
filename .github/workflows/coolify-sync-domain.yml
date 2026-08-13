@@ -19,6 +19,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Diagnose Coolify access on runner
+        run: |
+          set -euo pipefail
+          echo "HOME=$HOME USER=$(whoami)"
+          echo "Coolify-related files (names only):"
+          ls -la "$HOME/.coolify" 2>/dev/null || echo "  no ~/.coolify"
+          ls -la "$HOME/.coolify-tokens-rotated-2026-08-08" 2>/dev/null || echo "  no rotated tokens dir"
+          echo "Docker access:"
+          if command -v docker >/dev/null 2>&1; then
+            docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>&1 | head -40 || true
+          else
+            echo "  docker not installed/available"
+          fi
+          echo "Coolify localhost:"
+          curl -sS -o /tmp/coolify-ver.txt -w "HTTP %{http_code}\n" --max-time 5 http://localhost:8000 || true
+          head -c 200 /tmp/coolify-ver.txt || true
+          echo
+
       - name: Sync voca.kenchange.com on Coolify
         env:
           COOLIFY_BASE_URL: ${{ vars.COOLIFY_BASE_URL || 'http://localhost:8000' }}
