@@ -125,7 +125,8 @@ restart_cloudflared() {
   script="$(write_ensure_script)"
   echo "ensure script: $script"
   echo "starting tunnel without RUNNER_TRACKING_ID (Actions cleanup will not reap it)"
-  env -u RUNNER_TRACKING_ID "$script"
+  # Helper uses set -e and a 2s pgrep; tolerate failure so this loop can wait longer.
+  env -u RUNNER_TRACKING_ID "$script" || true
   for i in $(seq 1 15); do
     pids="$(tunnel_pids)"
     if [ -n "$pids" ]; then

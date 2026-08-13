@@ -28,7 +28,7 @@ For every fix or feature, follow this checklist. Details: `.cursor/skills/ve-pr-
    - **Other sessions:** rename to `vl-<PR#>` immediately after the PR exists.
 5. **Babysit** — Fix CI and **address every review** until all required checks are green; set PR title prefix `[ready]`. On every new push, **remove** `[ready]` first; only re-add it after checks are green again.
 6. **Wait** — Stop and wait for the user to review. Do **not** merge until the user explicitly asks.
-7. **Merge + deploy** — On merge request: merge (no squash) → verify CI then Coolify Deploy (project `i8luqt7n49kugwqwfbcyrfvl`) → smoke-test the app → **remove the worktree**.
+7. **Merge + deploy** — On merge request: **reviews first (hard gate)** — list unresolved GitHub review threads; if any are unanswered, **fix or reply, then stop** (do not merge “and fix reviews later”). Only when every thread is fixed or replied-to: merge (no squash) → verify CI then Coolify Deploy (project `i8luqt7n49kugwqwfbcyrfvl`) → smoke-test the app → **remove the worktree**.
 
 ## Review comments (mandatory)
 
@@ -41,8 +41,9 @@ For each comment, do exactly one of:
 
 Checklist before `[ready]` / merge:
 
-- List unresolved review threads and confirm each is fixed **or** replied-to
+- List unresolved review threads (`gh api graphql` reviewThreads, or the PR Files/Conversation tabs) and confirm each is fixed **or** replied-to
 - Do not mark `[ready]` while actionable or unanswered review threads remain
+- **Do not merge while any review thread is unanswered** — even if the user already asked to merge. Handle reviews first, then merge in a follow-up.
 - Prefer fixing over arguing; reply-only when the feedback is clearly wrong or out of scope for this PR
 
 ## Must not
@@ -52,6 +53,7 @@ Checklist before `[ready]` / merge:
 - Mark a UI-change PR `[ready]` without screenshots in the PR description
 - Mark `[ready]` or merge with unanswered / unresolved review comments
 - Ignore review feedback without either a fix or a GitHub reply
+- Merge (even after an explicit user ask) while any review thread is unanswered — **fix or reply first**
 - Merge without an explicit user ask
 - Skip worktree cleanup after a successful merge
 - Force-push to `main` or skip hooks
