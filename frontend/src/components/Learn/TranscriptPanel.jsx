@@ -27,9 +27,20 @@ export function findActiveCueIndex(cues, currentTime) {
   return fallback;
 }
 
+/** Split transcript text into word / non-word tokens for click-to-define. */
+export function tokenizeCueText(text) {
+  if (!text) return [];
+  return String(text).split(/(\b[\p{L}\p{N}']+\b)/u).filter((t) => t.length > 0);
+}
+
+function isWordToken(token) {
+  return /^[\p{L}\p{N}']+$/u.test(token);
+}
+
 export default function TranscriptPanel({
   cues = [],
   onSeek,
+  onWordClick,
   highlightWord = null,
   currentTime = null,
   activeStart = null,
@@ -76,13 +87,12 @@ export default function TranscriptPanel({
         const hasWord =
           normalizedHighlight &&
           cue.text.toLowerCase().includes(normalizedHighlight);
+        const tokens = tokenizeCueText(cue.text);
 
         return (
-          <button
+          <div
             key={`${cue.start}-${idx}`}
-            type="button"
             ref={isActive ? activeRef : null}
-            onClick={() => onSeek?.(Number(cue.start) || 0)}
             className={`w-full text-left px-3 py-2 rounded-lg transition border ${
               isActive
                 ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
@@ -91,11 +101,45 @@ export default function TranscriptPanel({
                 : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60'
             }`}
           >
-            <span className="text-[11px] font-mono text-primary-600 dark:text-primary-400 mr-2">
+            <button
+              type="button"
+              onClick={() => onSeek?.(Number(cue.start) || 0)}
+              className="text-[11px] font-mono text-primary-600 dark:text-primary-400 mr-2 hover:underline"
+              title="Jump to this line"
+            >
               {formatTime(cue.start)}
+            </button>
+            <span className="text-sm text-gray-800 dark:text-gray-200">
+              {tokens.map((token, tIdx) => {
+                if (!isWordToken(token)) {
+                  return <span key={tIdx}>{token}</span>;
+                }
+                const isHighlight =
+                  normalizedHighlight &&
+                  token.toLowerCase() === normalizedHighlight;
+                return (
+                  <button
+                    key={tIdx}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onWordClick?.(token);
+                    }}
+                    className={`rounded px-0.5 -mx-0.5 transition ${
+                      isHighlight
+                        ? 'bg-amber-200/80 dark:bg-amber-700/50 font-medium'
+                        : onWordClick
+                        ? 'hover:bg-primary-100 dark:hover:bg-primary-900/40 hover:text-primary-800 dark:hover:text-primary-200 cursor-pointer'
+                        : ''
+                    }`}
+                    title={onWordClick ? `Look up “${token}”` : undefined}
+                  >
+                    {token}
+                  </button>
+                );
+              })}
             </span>
-            <span className="text-sm text-gray-800 dark:text-gray-200">{cue.text}</span>
-          </button>
+          </div>
         );
       })}
     </div>

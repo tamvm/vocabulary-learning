@@ -8,10 +8,13 @@ import {
   EyeOff,
   Eye,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { aiAPI } from '@/lib/api';
 import VideoPlayer, { seekPlayer } from './VideoPlayer';
 import TranscriptPanel from './TranscriptPanel';
 import VocabPanel from './VocabPanel';
 import ChapterBar from './ChapterBar';
+import WordDetailModal, { normalizeWordDetail } from './WordDetailModal';
 
 function PanelShell({ title, children, className = '' }) {
   return (
@@ -26,6 +29,30 @@ function PanelShell({ title, children, className = '' }) {
   );
 }
 
+function findStudyWord(studyWords, rawWord) {
+  const needle = String(rawWord || '')
+    .toLowerCase()
+    .replace(/^[^a-z0-9']+|[^a-z0-9']+$/gi, '');
+  if (!needle) return null;
+  const exact = studyWords.find((w) => w.word?.toLowerCase() === needle);
+  if (exact) return exact;
+  return (
+    studyWords.find((w) => {
+      const ww = (w.word?.toLowerCase() || '').trim();
+      if (!ww) return false;
+      if (ww.includes(' ')) {
+        return ww.split(/\s+/).includes(needle);
+      }
+      return (
+        ww === `${needle}s` ||
+        needle === `${ww}s` ||
+        ww === `${needle}es` ||
+        needle === `${ww}es`
+      );
+    }) || null
+  );
+}
+
 export default function StepStudy({
   videoInfo,
   cues = [],
@@ -34,14 +61,22 @@ export default function StepStudy({
   studyWords = [],
   onBack,
   onContinueQuiz,
+  onAddStudyWord,
   quizLoading,
 }) {
   const playerRef = useRef(null);
+  const lookupCacheRef = useRef(new Map());
   const [selectedWord, setSelectedWord] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [showVocab, setShowVocab] = useState(true);
   const [showTranscript, setShowTranscript] = useState(true);
   const [showSummary, setShowSummary] = useState(Boolean(summary));
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const [detailWord, setDetailWord] = useState(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (summary) setShowSummary(true);
@@ -61,6 +96,80 @@ export default function StepStudy({
     seekPlayer(playerRef.current, t);
   }, []);
 
+  const openDetail = useCallback(
+    async (raw, knownItem = null) => {
+      const cleaned = String(raw || '')
+        .trim()
+        .replace(/^[^a-zA-Z0-9']+|[^a-zA-Z0-9']+$/g, '');
+      if (!cleaned) return;
+
+      setSelectedWord(cleaned);
+      setDetailOpen(true);
+      setDetailError(null);
+
+      const fromStudy = knownItem || findStudyWord(studyWords, cleaned);
+      if (fromStudy?.definition) {
+        const normalized = normalizeWordDetail(fromStudy, cleaned);
+        setDetailWord(normalized);
+        setDetailLoading(false);
+        lookupCacheRef.current.set(cleaned.toLowerCase(), normalized);
+        return;
+      }
+
+      const cached = lookupCacheRef.current.get(cleaned.toLowerCase());
+      if (cached) {
+        setDetailWord(cached);
+        setDetailLoading(false);
+        return;
+      }
+
+      setDetailWord({ word: cleaned });
+      setDetailLoading(true);
+      try {
+        const response = await aiAPI.analyzeWord(cleaned, { autoSave: false });
+        const analysis = response.data?.analysis;
+        if (!analysis) {
+          throw new Error(response.data?.message || 'No analysis returned');
+        }
+        const normalized = normalizeWordDetail(analysis, cleaned);
+        lookupCacheRef.current.set(cleaned.toLowerCase(), normalized);
+        setDetailWord(normalized);
+      } catch (err) {
+        const msg =
+          err.response?.data?.message || err.message || 'Failed to look up word';
+        setDetailError(msg);
+        toast.error(msg);
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [studyWords]
+  );
+
+  const handleCloseDetail = useCallback(() => {
+    setDetailOpen(false);
+    setDetailError(null);
+  }, []);
+
+  const alreadyAdded = Boolean(
+    detailWord?.word && findStudyWord(studyWords, detailWord.word)
+  );
+
+  const handleAdd = useCallback(async () => {
+    if (!detailWord?.word || !onAddStudyWord) return;
+    setAdding(true);
+    try {
+      await onAddStudyWord(detailWord);
+      toast.success(`Added “${detailWord.word}” to new words`);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || err.message || 'Failed to add word'
+      );
+    } finally {
+      setAdding(false);
+    }
+  }, [detailWord, onAddStudyWord]);
+
   // Hide words → video + transcript sit side by side
   const sideBySide = !showVocab && showTranscript;
 
@@ -72,6 +181,7 @@ export default function StepStudy({
       <TranscriptPanel
         cues={cues}
         onSeek={handleSeek}
+        onWordClick={(w) => openDetail(w)}
         highlightWord={selectedWord}
         currentTime={currentTime}
       />
@@ -86,7 +196,8 @@ export default function StepStudy({
       <VocabPanel
         words={studyWords}
         selectedWord={selectedWord}
-        onSelectWord={(w) => setSelectedWord((prev) => (prev === w ? null : w))}
+        onSelectWord={(w) => setSelectedWord(w)}
+        onOpenWord={(item) => openDetail(item.word, item)}
       />
     </PanelShell>
   ) : null;
@@ -107,7 +218,7 @@ export default function StepStudy({
             {videoInfo?.title || 'Study the video'}
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Click a transcript line to jump · hide panels to focus on video
+            Click a word for definition · click a timestamp to jump
           </p>
         </div>
 
@@ -228,6 +339,17 @@ export default function StepStudy({
           </div>
         ) : null}
       </div>
+
+      <WordDetailModal
+        open={detailOpen}
+        wordData={detailWord}
+        loading={detailLoading}
+        error={detailError}
+        alreadyAdded={alreadyAdded}
+        adding={adding}
+        onClose={handleCloseDetail}
+        onAdd={handleAdd}
+      />
     </div>
   );
 }
