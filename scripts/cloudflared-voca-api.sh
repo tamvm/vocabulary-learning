@@ -84,15 +84,16 @@ tunnel_pids() {
   pgrep -f '[c]loudflared .*tunnel' || true
 }
 
-# GitHub Actions reaps job-cgroup children ("Terminate orphan process: cloudflared").
-# Start/restart must happen under atd, sshd, systemd, or host PID 1 — never as a
-# direct child of this script.
+# The self-hosted runner reaps descendants that still have RUNNER_TRACKING_ID
+# ("Terminate orphan process: cloudflared"). This host already ran
+# `cloudflared tunnel run n8n` as a user daemon; we restore that process.
 write_ensure_script() {
   local dest="${HOME}/.cloudflared/ensure-n8n-tunnel.sh"
   mkdir -p "${HOME}/.cloudflared"
   cat >"$dest" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+unset RUNNER_TRACKING_ID || true
 export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH}"
 CLOUDFLARED=$(printf '%q' "$CLOUDFLARED")
 CONFIG_PATH=$(printf '%q' "$CONFIG_PATH")
@@ -106,7 +107,7 @@ if [ -n "\$pids" ]; then
   [ -z "\$pids" ] || kill -9 \$pids 2>/dev/null || true
   sleep 1
 fi
-nohup "\$CLOUDFLARED" tunnel --config "\$CONFIG_PATH" run "\$TUNNEL_NAME" >>"\$LOG" 2>&1 < /dev/null &
+env -u RUNNER_TRACKING_ID nohup "\$CLOUDFLARED" tunnel --config "\$CONFIG_PATH" run "\$TUNNEL_NAME" >>"\$LOG" 2>&1 < /dev/null &
 disown || true
 sleep 2
 pgrep -f '[c]loudflared .*tunnel' >/dev/null
@@ -115,47 +116,17 @@ EOF
   echo "$dest"
 }
 
-launch_ensure_outside_gha() {
-  local script="$1"
-  if command -v at >/dev/null 2>&1; then
-    echo "scheduling tunnel restart via at"
-    printf '%s\n' "$script" | at now && return 0
-  fi
-  if command -v ssh >/dev/null 2>&1 \
-    && ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
-      127.0.0.1 "test -x $(printf '%q' "$script")" 2>/dev/null; then
-    echo "starting tunnel via ssh 127.0.0.1 (sshd cgroup)"
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new 127.0.0.1 \
-      "nohup $(printf '%q' "$script") >/tmp/ensure-n8n-tunnel.log 2>&1 &"
-    return 0
-  fi
-  if sudo -n true 2>/dev/null; then
-    echo "starting tunnel via systemd-run (system, KillMode=process)"
-    sudo -n systemctl stop cloudflared-n8n 2>/dev/null || true
-    sudo -n systemctl reset-failed cloudflared-n8n 2>/dev/null || true
-    sudo -n systemd-run --unit=cloudflared-n8n \
-      --uid="$(id -u)" --gid="$(id -g)" --working-directory="$HOME" \
-      --property=Restart=on-failure \
-      --property=KillMode=process \
-      "$CLOUDFLARED" tunnel --config "$CONFIG_PATH" run "$TUNNEL_NAME"
-    return 0
-  fi
-  if command -v docker >/dev/null 2>&1; then
-    echo "starting tunnel via docker nsenter into PID 1"
-    docker run --rm --privileged --pid=host --network=host --cgroupns=host alpine:3.20 \
-      nsenter -t 1 -m -u -i -n -p -C -- "$script"
-    return 0
-  fi
-  echo "::error::No at/ssh/sudo/docker to start cloudflared outside the Actions cgroup" >&2
-  return 1
-}
-
 restart_cloudflared() {
   local script pids i
+  if [ -z "$CLOUDFLARED" ]; then
+    echo "::error::cloudflared binary not found" >&2
+    return 1
+  fi
   script="$(write_ensure_script)"
   echo "ensure script: $script"
-  launch_ensure_outside_gha "$script"
-  for i in $(seq 1 20); do
+  echo "starting tunnel without RUNNER_TRACKING_ID (Actions cleanup will not reap it)"
+  env -u RUNNER_TRACKING_ID "$script"
+  for i in $(seq 1 15); do
     pids="$(tunnel_pids)"
     if [ -n "$pids" ]; then
       echo "cloudflared running pids: ${pids}"
@@ -163,9 +134,8 @@ restart_cloudflared() {
     fi
     sleep 1
   done
-  echo "::error::cloudflared failed to start outside Actions cgroup" >&2
+  echo "::error::cloudflared failed to start" >&2
   tail -50 "${HOME}/.cloudflared/voca-api-tunnel.log" >&2 || true
-  cat /tmp/ensure-n8n-tunnel.log >&2 || true
   return 1
 }
 
