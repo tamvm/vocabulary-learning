@@ -55,10 +55,22 @@ export default function TranscriptPanel({
   useEffect(() => {
     if (activeIndex < 0 || activeIndex === lastScrolledIdx.current) return;
     lastScrolledIdx.current = activeIndex;
+    const parent = listRef.current;
     const el = activeRef.current;
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
+    if (!parent || !el) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const visible =
+      elRect.top >= parentRect.top + 8 && elRect.bottom <= parentRect.bottom - 8;
+    if (visible) return;
+
+    const next =
+      parent.scrollTop +
+      (elRect.top - parentRect.top) -
+      parent.clientHeight / 2 +
+      el.offsetHeight / 2;
+    parent.scrollTo({ top: Math.max(0, next), behavior: 'smooth' });
   }, [activeIndex]);
 
   if (!items.length) {
@@ -70,7 +82,7 @@ export default function TranscriptPanel({
   }
 
   return (
-    <div ref={listRef} className="h-full overflow-y-auto pr-1 space-y-1">
+    <div ref={listRef} className="h-full min-h-0 overflow-y-auto overscroll-contain pr-1 space-y-1">
       {items.map((cue, idx) => {
         const isActive = idx === activeIndex;
         const hasWord =
@@ -81,7 +93,9 @@ export default function TranscriptPanel({
           <button
             key={`${cue.start}-${idx}`}
             type="button"
-            ref={isActive ? activeRef : null}
+            ref={(node) => {
+              if (isActive && node) activeRef.current = node;
+            }}
             onClick={() => onSeek?.(Number(cue.start) || 0)}
             className={`w-full text-left px-3 py-2 rounded-lg transition border ${
               isActive
