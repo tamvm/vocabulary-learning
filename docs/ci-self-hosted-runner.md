@@ -3,14 +3,44 @@
 This repo’s [CI workflow](../.github/workflows/ci.yml) uses `runs-on: self-hosted`.
 Jobs stay **Queued** until a runner for this repository is online.
 
-## 1. Register a runner
+## Current runner (Hetzner)
+
+| Field | Value |
+|-------|--------|
+| Host | Hetzner (`openclaw`) |
+| Path | `~/actions-runner-vocabulary-learning` |
+| Name | `hetzner-openclaw-vocabulary-learning` |
+| Labels | `self-hosted`, `Linux`, `X64` |
+| Version | `2.336.0` |
+| Service | `actions.runner.tamvm-vocabulary-learning.hetzner-openclaw-vocabulary-learning.service` |
+| Node on host | 20.x (matches [`.nvmrc`](../.nvmrc)) |
+
+### Ops
+
+```bash
+# SSH as the runner user, then:
+cd ~/actions-runner-vocabulary-learning
+sudo ./svc.sh status
+sudo ./svc.sh start   # if offline
+sudo ./svc.sh stop
+```
+
+Confirm **Idle** (or busy with a job) under  
+Settings → Actions → Runners → `hetzner-openclaw-vocabulary-learning`.
+
+Cloud Agents may keep a short-lived registration token as  
+`GITHUB_RUNNER_TOKEN_VOCABULARY_LEARNING` (plus Hetzner SSH secrets) to (re)register this runner.  
+Registration tokens expire in about an hour — create a fresh one from the GitHub runners UI when needed.
+
+## 1. Register a new runner (manual)
 
 1. Open **Settings → Actions → Runners → New self-hosted runner**  
    (or `https://github.com/<owner>/<repo>/settings/actions/runners/new`).
-2. Choose your OS and architecture (macOS **ARM64** on Apple Silicon).
+2. Choose **Linux** / **x64** (this repo’s production runner).
 3. Run the download / extract / `./config.sh` commands GitHub shows.
    - URL: this repository
    - Labels: keep defaults (`self-hosted`, OS, arch) unless you target custom labels in the workflow
+   - Prefer a dedicated directory (e.g. `~/actions-runner-vocabulary-learning`) so other repos on the same host keep separate runners
 4. Start the runner:
 
 ```bash
@@ -18,9 +48,9 @@ Jobs stay **Queued** until a runner for this repository is online.
 ./run.sh
 
 # or as a service
-./svc.sh install
-./svc.sh start
-./svc.sh status
+sudo ./svc.sh install
+sudo ./svc.sh start
+sudo ./svc.sh status
 ```
 
 5. Confirm the runner is **Idle** under Settings → Actions → Runners.
@@ -49,6 +79,8 @@ Do not store production secrets on the runner disk; use GitHub Actions secrets w
 
 ## 5. Troubleshooting
 
-- **Queued forever** — runner offline; start `./run.sh` or `./svc.sh start`
+- **Queued forever** — runner offline; `sudo ./svc.sh start` in the runner directory
 - **Node version errors** — install Node 20 on the runner host; `setup-node` still needs a working environment
 - **Permission errors** — ensure the service user can write the runner `_work` directory
+- **Re-register** — create a new registration token in the GitHub UI, then  
+  `./config.sh remove --token <TOKEN>` and configure again (or use `--replace`)
