@@ -44,14 +44,13 @@ api.interceptors.response.use(
       error.message ||
       'Something went wrong'
 
-    // Gateway / client timeouts (common on long /learn analyze) — surface a clear action
+    // Gateway / client timeouts — keep messages endpoint-agnostic (this interceptor is global)
     if (status === 502 || status === 504) {
       message =
         error.response?.data?.message ||
-        'The server took too long analyzing this video (gateway timeout). Try a shorter video, or retry once.'
-    } else if (error.code === 'ECONNABORTED' || /timeout/i.test(String(message))) {
-      message =
-        'Analysis timed out. Long videos can take a while — please retry, or try a shorter clip.'
+        'The server took too long to respond (gateway timeout). Please try again.'
+    } else if (error.code === 'ECONNABORTED') {
+      message = 'Request timed out. Please try again or use a shorter input.'
     }
 
     // Handle 401 errors (unauthorized)
