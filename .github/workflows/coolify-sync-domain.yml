@@ -1,10 +1,16 @@
 name: Coolify Sync Domain
 
-# Apply production host https://voca.kenchange.com on Coolify (FQDN + CORS/API env).
+# Apply production hosts on Coolify (FQDN + CORS/API env).
+# UI: https://voca.kenchange.com
+# API: https://api.voca.kenchange.com (Host rule, not PathPrefix /api)
 # Runs on the self-hosted runner so it can reach Coolify at localhost:8000.
 
 on:
   workflow_dispatch:
+  # One-shot: TOM-100 — remove this push trigger after api.voca.kenchange.com works
+  push:
+    branches:
+      - cursor/tom-100-api-subdomain-503a
 
 jobs:
   sync:
@@ -14,6 +20,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Diagnose Coolify access on runner
+        run: |
+          set -euo pipefail
+          echo "HOME=$HOME USER=$(whoami)"
+          echo "Coolify-related files (names only):"
+          ls -la "$HOME/.coolify" 2>/dev/null || echo "  no ~/.coolify"
+          ls -la "$HOME/.coolify-tokens-rotated-2026-08-08" 2>/dev/null || echo "  no rotated tokens dir"
+          echo "Docker access:"
+          if command -v docker >/dev/null 2>&1; then
+            docker ps --format 'table {{.Names}}\t{{.Status}}' 2>&1 | head -40 || true
+          else
+            echo "  docker not installed/available"
+          fi
 
       - name: Sync voca.kenchange.com on Coolify
         env:
@@ -26,3 +46,33 @@ jobs:
         run: |
           chmod +x scripts/coolify-sync-voca-domain.sh
           scripts/coolify-sync-voca-domain.sh
+
+      - name: Smoke API host after sync
+        run: |
+          set -euo pipefail
+          echo "Waiting for Traefik/Coolify/DNS to apply api.voca.kenchange.com..."
+          ok=0
+          for i in $(seq 1 36); do
+            code="$(curl -sS -o /tmp/voca-api-smoke.txt -w '%{http_code}' --max-time 15 \
+              https://api.voca.kenchange.com/api/words || true)"
+            body="$(head -c 200 /tmp/voca-api-smoke.txt || true)"
+            echo "attempt $i: HTTP $code body=${body}"
+            if [ "$code" = "401" ] || [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::https://api.voca.kenchange.com/api/words is not healthy (need Cloudflare A record api → 178.156.247.159 proxied, plus Coolify FQDN)"
+            echo "Direct sslip (control):"
+            curl -sS -o /tmp/sslip-smoke.txt -w "sslip /api/words HTTP %{http_code}\n" --max-time 15 \
+              http://yydjqewjghoex53en4o0je43.178.156.247.159.sslip.io/api/words || true
+            head -c 200 /tmp/sslip-smoke.txt || true
+            echo
+            exit 1
+          fi
+          health="$(curl -sS -o /tmp/voca-health-smoke.txt -w '%{http_code}' --max-time 15 \
+            https://api.voca.kenchange.com/health || true)"
+          echo "health HTTP $health $(head -c 120 /tmp/voca-health-smoke.txt || true)"
+          echo "API host smoke passed (HTTP $code)"

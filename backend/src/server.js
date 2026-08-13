@@ -27,6 +27,8 @@ if (process.env.NODE_ENV === 'production') {
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: false, // Allow for development
+  // SPA is on voca.kenchange.com; API is on api.voca.kenchange.com
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // Rate limiting
