@@ -75,7 +75,9 @@ Do not store production secrets on the runner disk; use GitHub Actions secrets w
 
 1. Install root + backend + frontend deps (`npm run install:deps`)
 2. Build (`npm run build`)
-3. Smoke tests (`npm test` → Quiz FSRS script)
+3. Smoke tests (`npm test` — Quiz FSRS, URL scraper guards, PostgREST filter, Supabase keep-alive unit tests)
+
+Keep-alive of the hosted Supabase project is a **separate** workflow ([`supabase-keepalive.yml`](../.github/workflows/supabase-keepalive.yml)) on `ubuntu-latest` (not this self-hosted runner). See [Supabase keep-alive](SUPABASE_KEEPALIVE.md).
 
 ## 5. Troubleshooting
 

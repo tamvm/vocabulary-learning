@@ -210,6 +210,9 @@ npm run build:client    # Build frontend for production
 
 # Production
 npm start              # Start production server (backend only)
+
+# Supabase keep-alive (read-only ping; see docs/SUPABASE_KEEPALIVE.md)
+npm run keepalive
 ```
 
 ### API Documentation

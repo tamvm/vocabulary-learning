@@ -7,6 +7,7 @@ This folder contains all the detailed documentation for the Magic English applic
 ### 🚀 Deployment & Setup
 - **[Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md)** - Production https://voca.kenchange.com (Coolify project `i8luqt7n49kugwqwfbcyrfvl`) + deploy-on-merge via Actions
 - **[Self-hosted CI runner](ci-self-hosted-runner.md)** - GitHub Actions self-hosted runner for CI
+- **[Supabase keep-alive](SUPABASE_KEEPALIVE.md)** - Scheduled ping so free-tier projects do not pause
 - **[Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)** - Legacy Railway notes (Coolify is preferred)
 - **[GitHub Setup Guide](GITHUB_SETUP.md)** - Setting up GitHub repository and workflows
 - **[Migration Guide](MIGRATION_GUIDE.md)** - Database migrations and version updates
@@ -29,6 +30,7 @@ magic_english/
 │   ├── README.md          # This file - documentation index
 │   ├── COOLIFY_DEPLOYMENT.md
 │   ├── ci-self-hosted-runner.md
+│   ├── SUPABASE_KEEPALIVE.md
 │   ├── RAILWAY_DEPLOYMENT.md
 │   ├── GITHUB_SETUP.md
 │   ├── MIGRATION_GUIDE.md
@@ -50,6 +52,7 @@ magic_english/
 ### For Deployment
 - Use [Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md) for production hosting + auto-deploy
 - Use [Self-hosted CI runner](ci-self-hosted-runner.md) for Actions
+- Use [Supabase keep-alive](SUPABASE_KEEPALIVE.md) for GitHub secrets + the 3-day ping cadence
 - [Railway Deployment Guide](RAILWAY_DEPLOYMENT.md) is legacy
 - Follow [GitHub Setup](GITHUB_SETUP.md) for repository management
 - Apply [Migration Guide](MIGRATION_GUIDE.md) for database updates

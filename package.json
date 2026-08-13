@@ -13,8 +13,9 @@
     "build:client": "cd frontend && npm run build",
     "start": "cd backend && npm start",
     "install:deps": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "test": "cd backend && npm test",
+    "test": "npm test --prefix backend && node scripts/supabase-keepalive.test.js",
     "lint": "cd frontend && npm run lint",
+    "keepalive": "node scripts/supabase-keepalive.js",
     "reset-today": "./scripts/reset-today.sh",
     "reset-today:dry-run": "./scripts/reset-today.sh --dry-run"
   },
