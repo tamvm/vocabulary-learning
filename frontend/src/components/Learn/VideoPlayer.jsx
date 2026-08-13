@@ -1,7 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { seekPlayer } from '@/lib/transcriptSync';
-
-export { seekPlayer };
 
 const POLL_MS = 250;
 
@@ -98,6 +95,9 @@ export default function VideoPlayer({ videoId, onReady, onTime }) {
       });
     };
 
+    let readyHandler = null;
+    const prevReady = window.onYouTubeIframeAPIReady;
+
     if (window.YT?.Player) {
       initPlayer();
     } else {
@@ -108,15 +108,18 @@ export default function VideoPlayer({ videoId, onReady, onTime }) {
         tag.src = 'https://www.youtube.com/iframe_api';
         document.body.appendChild(tag);
       }
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        prev?.();
+      readyHandler = () => {
+        if (typeof prevReady === 'function') prevReady();
         if (!cancelled) initPlayer();
       };
+      window.onYouTubeIframeAPIReady = readyHandler;
     }
 
     return () => {
       cancelled = true;
+      if (readyHandler && window.onYouTubeIframeAPIReady === readyHandler) {
+        window.onYouTubeIframeAPIReady = prevReady;
+      }
       destroyPlayer();
     };
   }, [videoId]);

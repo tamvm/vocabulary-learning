@@ -57,7 +57,9 @@ export default function TranscriptPanel({
         return (
           <button
             key={`${cue.start}-${idx}`}
-            ref={isActive ? activeRef : undefined}
+            ref={(el) => {
+              if (isActive && el) activeRef.current = el;
+            }}
             type="button"
             onClick={() => onSeek?.(Number(cue.start) || 0)}
             className={`w-full text-left px-3 py-2 rounded-lg transition border ${

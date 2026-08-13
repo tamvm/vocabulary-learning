@@ -1,11 +1,11 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, Eye, EyeOff, FileText, List } from 'lucide-react';
-import VideoPlayer, { seekPlayer } from './VideoPlayer';
+import VideoPlayer from './VideoPlayer';
 import TranscriptPanel from './TranscriptPanel';
 import VocabPanel from './VocabPanel';
 import ChapterBar from './ChapterBar';
 import LessonSummary from './LessonSummary';
-import { shouldUpdatePlaybackTime } from '@/lib/transcriptSync';
+import { seekPlayer, shouldUpdatePlaybackTime } from '@/lib/transcriptSync';
 
 function PanelToggle({ pressed, onClick, icon: Icon, showLabel, hideLabel }) {
   return (
@@ -130,19 +130,6 @@ export default function StepStudy({
     </StudySidePanel>
   );
 
-  const playerBlock = (
-    <div>
-      {videoInfo?.videoId && (
-        <VideoPlayer
-          videoId={videoInfo.videoId}
-          onReady={handleReady}
-          onTime={handleTime}
-        />
-      )}
-      <ChapterBar chapters={chapters} onSeek={handleSeek} currentTime={currentTime} />
-    </div>
-  );
-
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-4">
@@ -208,24 +195,36 @@ export default function StepStudy({
 
       <LessonSummary summary={summary} defaultOpen className="mb-4" />
 
-      {bothPanels && (
-        <>
-          {playerBlock}
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[320px]">
-            {wordsPanel}
-            {transcriptPanel}
-          </div>
-        </>
-      )}
+      <div
+        className={
+          sideBySide
+            ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+            : undefined
+        }
+      >
+        <div>
+          {videoInfo?.videoId && (
+            <VideoPlayer
+              videoId={videoInfo.videoId}
+              onReady={handleReady}
+              onTime={handleTime}
+            />
+          )}
+          <ChapterBar
+            chapters={chapters}
+            onSeek={handleSeek}
+            currentTime={currentTime}
+          />
+        </div>
+        {sideBySide ? (showWords ? wordsPanel : transcriptPanel) : null}
+      </div>
 
-      {sideBySide && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-          {playerBlock}
-          {showWords ? wordsPanel : transcriptPanel}
+      {bothPanels && (
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[320px]">
+          {wordsPanel}
+          {transcriptPanel}
         </div>
       )}
-
-      {!showWords && !showTranscript && playerBlock}
 
       {(!showWords || !showTranscript) && (
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
