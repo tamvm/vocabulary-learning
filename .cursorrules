@@ -8,6 +8,7 @@ AI-powered vocabulary learning web app (Magic English). Multi-user, Supabase-bac
 - **AI**: Multiple providers (Ollama Cloud, OpenAI, local Ollama)
 - **CI**: Self-hosted GitHub Actions (`.github/workflows/ci.yml`) — see `docs/ci-self-hosted-runner.md`
 - **Deploy**: Coolify on Hetzner (Docker; project `i8luqt7n49kugwqwfbcyrfvl`) — see `docs/COOLIFY_DEPLOYMENT.md`; merge to `main`/`master` runs CI then `.github/workflows/coolify-deploy.yml`
+- **Production:** https://voca.kenchange.com (API `https://voca.kenchange.com/api`)
   - Backend / frontend Dockerfiles under `backend/` and `frontend/`
   - Legacy Railway/Nixpacks files may still exist; Coolify is the production path
 

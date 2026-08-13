@@ -4,10 +4,15 @@ Production deploy target for this repo is **Coolify** (Docker on Hetzner).
 
 **Coolify project id:** `i8luqt7n49kugwqwfbcyrfvl` (`vocabulary-learning`)
 
-| App | Coolify UUID | Dockerfile | Container port |
-|-----|--------------|------------|----------------|
-| Backend API | `yydjqewjghoex53en4o0je43` | `backend/Dockerfile` | `3012` (Coolify exposes `3112`) |
-| Frontend | `zsq5wwe7xltdrrlp5ldctr3g` | `frontend/Dockerfile` | `3102` |
+| App | Public URL | Coolify UUID | Dockerfile | Container port |
+|-----|------------|--------------|------------|----------------|
+| Frontend | https://voca.kenchange.com | `zsq5wwe7xltdrrlp5ldctr3g` | `frontend/Dockerfile` | `3102` |
+| Backend API | https://voca.kenchange.com/api | `yydjqewjghoex53en4o0je43` | `backend/Dockerfile` | `3012` (Coolify exposes `3112`) |
+
+Hetzner fallback (Coolify sslip.io, HTTP only):
+
+- Frontend: `http://zsq5wwe7xltdrrlp5ldctr3g.178.156.247.159.sslip.io`
+- Backend: `http://yydjqewjghoex53en4o0je43.178.156.247.159.sslip.io`
 
 Official Coolify docs: [GitHub Auto Deploy](https://coolify.io/docs/applications/ci-cd/github/auto-deploy) (path may vary by Coolify version: Configuration → Advanced → Auto Deploy).
 
@@ -57,8 +62,8 @@ AI_MODEL=...
 
 JWT_SECRET=...   # strong random value
 
-# Set after frontend domain exists
-FRONTEND_URL=https://your-frontend-domain
+# Must match the browser origin (CORS)
+FRONTEND_URL=https://voca.kenchange.com
 
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=1000
@@ -74,15 +79,23 @@ RATE_LIMIT_MAX=1000
 2. Build-time env (Vite) — set in Coolify so `npm run build` embeds them:
 
 ```bash
-VITE_SUPABASE_URL=...
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=...
-VITE_API_URL=https://your-backend-domain/api
+VITE_API_URL=https://voca.kenchange.com/api
 ```
 
 Exact names must match `frontend` usage (`VITE_*`). Rebuild after changing build-time vars.
 
-3. Point a domain at the frontend service.
-4. Update backend `FRONTEND_URL` to that domain and redeploy backend (CORS).
+`VITE_SUPABASE_URL` must be a hostname that resolves (NXDOMAIN breaks Google OAuth — the browser never reaches `/auth/v1/authorize`).
+
+3. Point **https://voca.kenchange.com** at the frontend service.
+4. Point **https://voca.kenchange.com/api** at the backend (same host, `/api` path).
+5. Set backend `FRONTEND_URL=https://voca.kenchange.com` and redeploy backend (CORS).
+6. In Supabase Auth → URL configuration:
+   - Site URL: `https://voca.kenchange.com`
+   - Redirect URLs: `https://voca.kenchange.com/**`
+
+To apply domain + CORS/API env on the live Coolify apps: Actions → **Coolify Sync Domain** (or `scripts/coolify-sync-voca-domain.sh` on the Hetzner runner).
 
 ---
 
@@ -96,6 +109,7 @@ These apps are connected with a **deploy key**, not a GitHub App source. Coolify
 |---------|----------|
 | PR merged / push → `main` or `master` | After workflow **CI** succeeds, deploy backend + frontend |
 | Actions → **Coolify Deploy** → Run workflow | Manual deploy (`both` / `backend` / `frontend`) |
+| Actions → **Coolify Sync Domain** | Set FQDN + `FRONTEND_URL` / `VITE_API_URL` to `voca.kenchange.com` and redeploy |
 
 The job runs on the repo’s **self-hosted** runner (same Hetzner host as Coolify) and calls:
 
@@ -131,8 +145,8 @@ If you later connect the apps via a Coolify **GitHub App** (or add Manual Git We
 After merge to `main`:
 
 1. Confirm CI is green, then Coolify Deploy run succeeds for project `i8luqt7n49kugwqwfbcyrfvl`.
-2. Smoke-test UI + auth in a browser.
-3. Do **not** change Coolify env/secrets during routine verify.
+2. Smoke-test UI + auth in a browser at **https://voca.kenchange.com**.
+3. Do **not** change Coolify env/secrets during routine verify (domain/CORS sync is a separate, explicit workflow).
 4. Details: `.cursor/skills/ve-pr-workflow/SKILL.md`
 
 ---
@@ -144,6 +158,8 @@ After merge to `main`:
 | Merge does nothing | CI failed (deploy waits on CI); Coolify Deploy workflow missing on `main`; runner offline |
 | Deploy job auth error | Runner token at `~/.coolify/github-actions.token`, or secret `COOLIFY_API_TOKEN` |
 | Build fails on `npm` / missing lockfile | Dockerfiles use `npm install`; ensure `package.json` present in base dir |
-| Frontend calls wrong API | Rebuild frontend after fixing `VITE_API_URL` |
-| CORS errors | Backend `FRONTEND_URL` must match the real frontend origin |
+| Frontend calls wrong API | Rebuild frontend after fixing `VITE_API_URL` to `https://voca.kenchange.com/api` |
+| CORS errors | Backend `FRONTEND_URL` must be `https://voca.kenchange.com` |
+| Google login: host not found (`*.supabase.co`) | `VITE_SUPABASE_URL` is stale/NXDOMAIN; copy a live `SUPABASE_URL` from the backend app and rebuild frontend |
+| `/api` returns 502 | Backend Coolify FQDN must include `https://voca.kenchange.com/api` |
 | Puppeteer/Chromium issues on backend | Image already installs Chromium in `backend/Dockerfile`; check Coolify build logs / memory |

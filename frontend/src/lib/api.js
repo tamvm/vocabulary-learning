@@ -2,7 +2,8 @@ import axios from 'axios'
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3012/api',
+  baseURL: import.meta.env.VITE_API_URL
+    || (import.meta.env.PROD ? '/api' : 'http://localhost:3012/api'),
   timeout: 120000, // Increased to 2 minutes for content analysis
   headers: {
     'Content-Type': 'application/json',
