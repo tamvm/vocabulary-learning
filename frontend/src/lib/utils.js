@@ -233,3 +233,15 @@ export function compareQuizAnswers(userAnswer, correctAnswer) {
   const normalizedCorrect = normalizeQuizAnswer(correctAnswer)
   return normalizedUser === normalizedCorrect
 }
+
+/** Speak a word aloud via the browser Speech Synthesis API. */
+export function speakWord(word) {
+  if (!word || typeof word !== 'string' || !('speechSynthesis' in window)) {
+    return
+  }
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(word)
+  utterance.lang = 'en-US'
+  utterance.rate = 0.8
+  window.speechSynthesis.speak(utterance)
+}
