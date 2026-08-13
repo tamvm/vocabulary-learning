@@ -1,0 +1,58 @@
+---
+description: Worktree-per-PR development workflow with CI babysit, deploy verify, and cleanup
+alwaysApply: true
+---
+
+# PR worktree workflow
+
+For every fix or feature, follow this checklist. Details: `.cursor/skills/ve-pr-workflow/SKILL.md`.
+
+## Creating PRs
+
+- **Always create as open (ready for review)** — never draft unless the user explicitly asks.
+  - `ManagePullRequest` `create_pr`: **always** set `draft: false` (tool default is draft — override it every time).
+  - Automation may create drafts — **immediately** run `gh pr ready <N>` and confirm `isDraft: false` before finishing.
+  - Draft PRs skip review bots and can miss PR-triggered CI; leaving a PR draft is a workflow failure.
+- **UI changes require screenshots in the PR description** — any change that affects appearance or user-visible layout/interaction must include before/after (or after) images embedded in the PR body before marking `[ready]`. See the skill for capture/attach steps.
+- Target `main`, merge with **no squash**.
+- Conventional commits; keep PR commits related to the change only.
+- Push every follow-up commit to the **same** PR branch.
+
+## Checklist
+
+1. **Worktree** — Create a dedicated worktree under `../vl-worktrees/pr-<N>` (relative to the main repo). Prefer opening the PR early (open/non-draft) so the number is known; use a provisional path only if needed, then rename.
+2. **Root** — Move the agent workspace into that worktree (`move_agent_to_root`) when available.
+3. **PR** — Implement, commit (conventional commits), push, open PR targeting `main` as **ready for review** (no squash merges). Never leave draft unless asked. If UI changed, embed screenshots in the PR description.
+4. **Session title** — Rename via `rename_chat` when available (authorized for this workflow):
+   - **Linear / todo-sourced sessions:** rename to the issue id as soon as it is known. After the PR exists, use `<ISSUE> - PR-<PR#> - Short title`.
+   - **Other sessions:** rename to `vl-<PR#>` immediately after the PR exists.
+5. **Babysit** — Fix CI and **address every review** until all required checks are green; set PR title prefix `[ready]`. On every new push, **remove** `[ready]` first; only re-add it after checks are green again.
+6. **Wait** — Stop and wait for the user to review. Do **not** merge until the user explicitly asks.
+7. **Merge + deploy** — On merge request: merge (no squash) → verify Railway/auto-deploy if configured → smoke-test the app → **remove the worktree**.
+
+## Review comments (mandatory)
+
+Every PR review comment / review thread (human, Bugbot, Copilot, Kilo, Cursor Bugbot, etc.) must be handled before `[ready]` and before merge. **No silent ignores.**
+
+For each comment, do exactly one of:
+
+1. **Fix it** — make the code change, push, and resolve the thread (or reply with what changed + mark resolved when the tool allows), **or**
+2. **Reply why it’s not relevant** — post a short GitHub reply on that thread explaining why no code change is needed (wrong assumption, out of scope, already handled elsewhere, intentional tradeoff, false positive). Then resolve the thread if appropriate.
+
+Checklist before `[ready]` / merge:
+
+- List unresolved review threads and confirm each is fixed **or** replied-to
+- Do not mark `[ready]` while actionable or unanswered review threads remain
+- Prefer fixing over arguing; reply-only when the feedback is clearly wrong or out of scope for this PR
+
+## Must not
+
+- Create or leave a PR as draft (unless the user explicitly asked for a draft)
+- Call `create_pr` without `draft: false`, or finish after draft creation without `gh pr ready` when the PR is still draft
+- Mark a UI-change PR `[ready]` without screenshots in the PR description
+- Mark `[ready]` or merge with unanswered / unresolved review comments
+- Ignore review feedback without either a fix or a GitHub reply
+- Merge without an explicit user ask
+- Skip worktree cleanup after a successful merge
+- Force-push to `main` or skip hooks
+- Change Railway/production env secrets as part of routine deploy

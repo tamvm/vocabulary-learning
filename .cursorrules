@@ -1,0 +1,95 @@
+# vocabulary-learning (Magic English) — Cursor Rules
+
+## Project Overview
+AI-powered vocabulary learning web app (Magic English). Multi-user, Supabase-backed, with AI word analysis and quizzes.
+- **Backend**: Node.js + Express.js (`backend/`) — REST API, AI service, Supabase client
+- **Frontend**: React + Vite + Tailwind CSS (`frontend/`) — JavaScript only (no TypeScript)
+- **Database**: PostgreSQL via Supabase (RLS, auth, realtime)
+- **AI**: Multiple providers (Ollama Cloud, OpenAI, local Ollama)
+- **CI**: Self-hosted GitHub Actions (`.github/workflows/ci.yml`) — see `docs/ci-self-hosted-runner.md`
+- **Deploy**: Railway / Nixpacks (`railway.json`, `nixpacks.toml`)
+
+## Architecture
+```
+backend/
+  src/
+    server.js           # Express entry + middleware
+    routes/             # words, users, ai, profile, …
+    services/           # AI, Quiz FSRS, enrichment helpers
+    middleware/         # auth, errors
+    config/             # Supabase
+  sql/                  # migrations / functions
+frontend/
+  src/
+    App.jsx             # routing
+    pages/              # page components
+    components/         # UI (Dashboard, Flashcards, Layout, …)
+    contexts/           # Auth, Theme
+    lib/                # API client + utils
+supabase/               # Supabase-related assets
+.github/workflows/      # ci.yml (self-hosted), release.yml
+plans/                  # feature plans
+docs/                   # setup, CI runner, deploy notes
+```
+
+## Key Rules
+
+### Security — CRITICAL
+- NEVER log, print, or commit secrets (`SUPABASE_SERVICE_ROLE_KEY`, JWT secrets, AI API keys, OAuth secrets)
+- `.env` / `.env.local` are gitignored — verify after every change
+- No API keys or secrets in frontend source; frontend may only use public Supabase anon key + URL
+- Prefer parameterized queries / Supabase client APIs — never concatenate user input into SQL
+- Auth: rely on Supabase session / backend auth middleware for data routes — never assume the caller is authenticated
+
+### Auth paths
+- Browser: Supabase Auth (session in frontend `AuthProvider`)
+- Backend: validate JWT / user from Supabase for protected routes
+- Keep UI gating and API gating in sync — both matter
+
+### AI providers
+- AI calls live under `backend/src/services/` — handle timeouts, non-200, empty content
+- App features must degrade when AI keys are unset (clear error, no crash)
+- Respect rate limits; bulk AI work must not block the event loop unboundedly
+
+### Code Style
+- **No TypeScript** — use JavaScript (`.js` / `.jsx`) matching the repo
+- Match existing Express + React/Vite + Tailwind patterns
+- Prefer small, explicit fixes over broad refactors
+- Don't remove broken code — fix it or flag it
+
+### Database / migrations
+- Schema changes go through SQL under `backend/sql/` (and/or `supabase/`) with safe guards (`IF NOT EXISTS` where applicable)
+- Destructive ops need confirmation / careful defaults — production data lives in Supabase
+
+### Testing / verification
+- Smoke: `npm test` (Quiz FSRS) — keep green when touching quiz/schedule logic
+- Frontend: `npm run lint` in `frontend/` when ESLint is configured; always verify build with `npm run build`
+- Auth changes: signed-in, signed-out, and invalid-token paths
+- UI changes: screenshots in the PR description before `[ready]`
+- CI: self-hosted runner — see `docs/ci-self-hosted-runner.md`
+
+### Git & Deployment
+- PR workflow (worktree-per-PR, babysit until `[ready]`, merge only on ask, deploy verify, worktree cleanup): see `.cursor/rules/pr-workflow.mdc` and `.cursor/skills/ve-pr-workflow/SKILL.md`
+- Worktrees live under `../vl-worktrees/pr-<N>`; session title `vl-<PR#>` after PR exists
+- Merge into **main** (no squash)
+- Conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, `ci:`
+- PR hygiene: only related commits — verify `git log --oneline origin/main..HEAD`
+- Branch hazard: always verify current branch before git ops
+- **PRs — always open / ready for review (never draft)** unless the user explicitly asks for a draft. `ManagePullRequest` `create_pr` must pass `draft: false`. Automation may create a draft — immediately `gh pr ready <N>` and verify `isDraft: false`
+- **PR reviews — fix or reply, never ignore:** every review comment/thread (human or bot) must be either fixed in code or answered on GitHub explaining why it is not relevant. Do not mark `[ready]` or merge with unanswered reviews.
+- Do not change Railway/production env secrets as part of routine deploy
+
+### UI Changes
+- Preserve the existing Tailwind / app visual language unless the task redesigns it
+- Attach screenshots in the PR description before `[ready]` (see `.cursor/skills/ve-pr-workflow/SKILL.md`)
+- Verify mobile layout when touching chrome / learning flows
+
+### Severity Calibration
+- **Critical (must fix)**: auth bypass, SQL injection, credential exposure, data loss
+- **Warning (follow-up)**: missing validation, unsafe defaults, AI error handling, rate-limit gaps
+- **Ignore**: formatting diffs, lockfile noise, non-deterministic AI content
+
+## Environment
+- Node.js 20+ (see `.nvmrc`)
+- Local: `npm run install:deps && npm run dev` (frontend ~3002, backend ~3012)
+- Cursor project rules/skills under `.cursor/` are authoritative for agents — do **not** treat root `CLAUDE.md` or `.claude/` kit docs as the source of truth for this repo’s workflow
