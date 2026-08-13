@@ -2,10 +2,19 @@ import express from 'express';
 import Joi from 'joi';
 import { aiService } from '../services/aiService.js';
 import { youtubeTranscriptService } from '../services/youtubeTranscriptService.js';
+import {
+  sampleTranscriptForAnalysis,
+  capCues,
+} from '../services/youtubeAnalyzeHelpers.js';
 
 const router = express.Router();
 
 const CHAPTER_MIN_DURATION_SEC = 8 * 60; // AI chapters if no YT chapters and long enough
+/** Keep analyze under Cloudflare/cloudflared ~100s proxy budget */
+const ANALYZE_VOCAB_SAMPLE_CHARS = 5000; // <= aiService chunk size → single AI call
+const ANALYZE_SUMMARY_SAMPLE_CHARS = 12000;
+const ANALYZE_VOCAB_CHUNKS = 1;
+const ANALYZE_MAX_CUES = 2500;
 
 const analyzeSchema = Joi.object({
   videoUrl: Joi.string().uri().required(),
@@ -85,7 +94,10 @@ router.post('/analyze', async (req, res, next) => {
     }
 
     console.log(`🎥 Extracting transcript for: ${videoUrl}`);
-    const transcriptResult = await youtubeTranscriptService.processYouTubeUrl(videoUrl);
+    const transcriptResult = await youtubeTranscriptService.processYouTubeUrl(videoUrl, {
+      transcript24TimeoutMs: 60000,
+      metaTimeoutMs: 8000,
+    });
 
     if (!transcriptResult.success) {
       return res.status(400).json({
@@ -98,7 +110,7 @@ router.post('/analyze', async (req, res, next) => {
       content,
       title,
       videoInfo,
-      cues = [],
+      cues: rawCues = [],
       chapters: rawChapters = [],
       provider = null,
       mode = null,
@@ -106,6 +118,11 @@ router.post('/analyze', async (req, res, next) => {
     const videoId = youtubeTranscriptService.extractVideoId(videoUrl);
     const durationSeconds =
       typeof videoInfo?.duration === 'number' ? videoInfo.duration : null;
+
+    // Bound cue payload size for long interviews (DB insert + JSON response)
+    const cues = capCues(rawCues, ANALYZE_MAX_CUES);
+    const vocabText = sampleTranscriptForAnalysis(content, ANALYZE_VOCAB_SAMPLE_CHARS);
+    const summaryText = sampleTranscriptForAnalysis(content, ANALYZE_SUMMARY_SAMPLE_CHARS);
 
     let knownWords = new Set();
     let learnedWords = new Set();
@@ -120,39 +137,49 @@ router.post('/analyze', async (req, res, next) => {
       console.log('Could not fetch known/learned words:', err.message);
     }
 
-    console.log(`🤖 Analyzing vocabulary at ${userCefrLevel} level...`);
-    const result = await aiService.analyzeWebsiteContent(content, userCefrLevel, {
-      limit: 30,
-      chunksToProcess: 6,
-    });
-
-    const vocabulary = (result.vocabulary || []).map((item) => ({
-      ...item,
-      isKnown: knownWords.has(item.word.toLowerCase()),
-      isLearned: learnedWords.has(item.word.toLowerCase()),
-    }));
-
-    // Summary + chapters
-    let summary = '';
     let chapters = normalizeChapters(rawChapters);
     const needAiChapters =
       chapters.length === 0 &&
       (durationSeconds == null || durationSeconds >= CHAPTER_MIN_DURATION_SEC);
 
-    try {
-      console.log('🧠 Generating summary' + (needAiChapters ? ' + AI chapters' : '') + '...');
-      const studyMeta = await aiService.summarizeAndChapter({
-        transcript: content,
+    // Vocab + summary in parallel — sequential 6-chunk AI was the main 502 cause on long videos
+    console.log(
+      `🤖 Analyzing vocabulary at ${userCefrLevel} (vocab sample ${vocabText.length}/${content.length} chars) + summary...`
+    );
+
+    const [vocabSettled, summarySettled] = await Promise.allSettled([
+      aiService.analyzeWebsiteContent(vocabText, userCefrLevel, {
+        limit: 30,
+        chunksToProcess: ANALYZE_VOCAB_CHUNKS,
+        chunkTimeout: 45000,
+      }),
+      aiService.summarizeAndChapter({
+        transcript: summaryText,
         durationSeconds,
         existingChapters: chapters.length ? chapters : null,
         needChapters: needAiChapters,
-      });
-      summary = studyMeta.summary || '';
-      if (studyMeta.chapters?.length) {
-        chapters = normalizeChapters(studyMeta.chapters);
+      }),
+    ]);
+
+    let vocabulary = [];
+    if (vocabSettled.status === 'fulfilled') {
+      vocabulary = (vocabSettled.value.vocabulary || []).map((item) => ({
+        ...item,
+        isKnown: knownWords.has(item.word.toLowerCase()),
+        isLearned: learnedWords.has(item.word.toLowerCase()),
+      }));
+    } else {
+      console.warn('Vocabulary analysis failed:', vocabSettled.reason?.message);
+    }
+
+    let summary = '';
+    if (summarySettled.status === 'fulfilled') {
+      summary = summarySettled.value.summary || '';
+      if (summarySettled.value.chapters?.length) {
+        chapters = normalizeChapters(summarySettled.value.chapters);
       }
-    } catch (sumErr) {
-      console.warn('Summary/chapter generation failed:', sumErr.message);
+    } else {
+      console.warn('Summary/chapter generation failed:', summarySettled.reason?.message);
     }
 
     let lessonId = null;
@@ -219,6 +246,8 @@ router.post('/analyze', async (req, res, next) => {
       transcriptMode: mode,
       transcriptPreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
       transcriptLength: content.length,
+      cuesTotal: Array.isArray(rawCues) ? rawCues.length : 0,
+      cuesReturned: cues.length,
       userCefrLevel,
       totalFound: vocabulary.length,
       knownCount: vocabulary.filter((v) => v.isKnown).length,
