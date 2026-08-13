@@ -2,6 +2,12 @@ import express from 'express';
 import Joi from 'joi';
 import { aiService } from '../services/aiService.js';
 import { youtubeTranscriptService } from '../services/youtubeTranscriptService.js';
+import {
+  HISTORY_LIST_COLUMNS,
+  HISTORY_LIST_COLUMNS_FALLBACK,
+  hydrateLessonResponse,
+  pickProgressFields,
+} from '../services/videoLessonProgress.js';
 
 const router = express.Router();
 
@@ -18,6 +24,16 @@ const quizSchema = Joi.object({
   vocabularyWords: Joi.array().items(Joi.string().min(1).max(200)).optional(),
   questionCount: Joi.number().integer().min(3).max(15).default(8),
 });
+
+const progressSchema = Joi.object({
+  currentStep: Joi.number().integer().min(2).max(4),
+  vocabularySnapshot: Joi.array().max(80),
+  studyWordsSnapshot: Joi.array().max(80),
+  quizQuestions: Joi.array().max(20),
+  quizAnswers: Joi.object(),
+  status: Joi.string().valid('analyzed', 'quiz_generated', 'completed'),
+  userCefrLevel: Joi.string().max(10),
+}).min(1);
 
 function normalizeChapters(chapters) {
   if (!Array.isArray(chapters) || !chapters.length) return [];
@@ -156,46 +172,43 @@ router.post('/analyze', async (req, res, next) => {
     }
 
     let lessonId = null;
-    try {
-      const { data: lesson, error: lessonErr } = await req.supabase
-        .from('video_lessons')
-        .insert({
-          user_id: req.user.id,
-          video_url: videoUrl,
-          video_id: videoId,
-          title: title || videoInfo?.title,
-          thumbnail_url: videoInfo?.thumbnail || null,
-          status: 'analyzed',
-          transcript_cues: cues,
-          transcript_text: content,
-          summary: summary || null,
-          chapters: chapters.length ? chapters : null,
-          duration_seconds: durationSeconds,
-          transcript_provider: provider,
-        })
-        .select('id')
-        .single();
+    const baseLesson = {
+      user_id: req.user.id,
+      video_url: videoUrl,
+      video_id: videoId,
+      title: title || videoInfo?.title,
+      thumbnail_url: videoInfo?.thumbnail || null,
+      status: 'analyzed',
+    };
+    const cacheLesson = {
+      ...baseLesson,
+      transcript_cues: cues,
+      transcript_text: content,
+      summary: summary || null,
+      chapters: chapters.length ? chapters : null,
+      duration_seconds: durationSeconds,
+      transcript_provider: provider,
+    };
+    const checkpointLesson = {
+      ...cacheLesson,
+      current_step: 2,
+      user_cefr_level: userCefrLevel,
+      vocabulary_snapshot: vocabulary,
+    };
 
-      if (lessonErr) {
-        // Columns may not exist yet — insert minimal row
-        console.warn('Full lesson insert failed, trying minimal:', lessonErr.message);
-        const { data: fallbackLesson, error: fallbackErr } = await req.supabase
+    try {
+      const attempts = [checkpointLesson, cacheLesson, baseLesson];
+      for (const row of attempts) {
+        const { data: lesson, error: lessonErr } = await req.supabase
           .from('video_lessons')
-          .insert({
-            user_id: req.user.id,
-            video_url: videoUrl,
-            video_id: videoId,
-            title: title || videoInfo?.title,
-            thumbnail_url: videoInfo?.thumbnail || null,
-            status: 'analyzed',
-          })
+          .insert(row)
           .select('id')
           .single();
-        if (!fallbackErr && fallbackLesson) {
-          lessonId = fallbackLesson.id;
+        if (!lessonErr && lesson) {
+          lessonId = lesson.id;
+          break;
         }
-      } else if (lesson) {
-        lessonId = lesson.id;
+        console.warn('Lesson insert attempt failed:', lessonErr?.message);
       }
     } catch (err) {
       console.log('Could not save video lesson:', err.message);
@@ -321,12 +334,16 @@ router.post('/quiz', async (req, res, next) => {
     });
 
     try {
+      const quizPatch = {
+        quiz_total: validatedQuestions.length,
+        status: 'quiz_generated',
+        current_step: 4,
+        quiz_questions: validatedQuestions,
+        updated_at: new Date().toISOString(),
+      };
       let query = req.supabase
         .from('video_lessons')
-        .update({
-          quiz_total: validatedQuestions.length,
-          status: 'quiz_generated',
-        })
+        .update(quizPatch)
         .eq('user_id', req.user.id);
 
       if (cachedLessonId) {
@@ -334,7 +351,17 @@ router.post('/quiz', async (req, res, next) => {
       } else {
         query = query.eq('video_id', videoId);
       }
-      await query;
+      const { error: quizUpdateErr } = await query;
+      if (quizUpdateErr) {
+        const { current_step, quiz_questions, updated_at, ...legacyPatch } = quizPatch;
+        let fallback = req.supabase
+          .from('video_lessons')
+          .update(legacyPatch)
+          .eq('user_id', req.user.id);
+        if (cachedLessonId) fallback = fallback.eq('id', cachedLessonId);
+        else fallback = fallback.eq('video_id', videoId);
+        await fallback;
+      }
     } catch (err) {
       console.log('Could not update video lesson:', err.message);
     }
@@ -407,7 +434,9 @@ router.post('/complete', async (req, res, next) => {
           quiz_total: quizTotal,
           words_saved: wordsSaved,
           status: 'completed',
+          current_step: 4,
           completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq('id', lesson.id);
     }
@@ -484,21 +513,121 @@ router.post('/mark-known', async (req, res, next) => {
 // GET /api/youtube/history
 router.get('/history', async (req, res, next) => {
   try {
-    const { data: lessons, error } = await req.supabase
+    let lessons = [];
+    const { data, error } = await req.supabase
       .from('video_lessons')
-      .select('*')
+      .select(HISTORY_LIST_COLUMNS)
       .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(20);
 
-    if (error) throw error;
+    if (error) {
+      const fallback = await req.supabase
+        .from('video_lessons')
+        .select(HISTORY_LIST_COLUMNS_FALLBACK)
+        .eq('user_id', req.user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (fallback.error) throw fallback.error;
+      lessons = fallback.data || [];
+    } else {
+      lessons = data || [];
+    }
 
     res.json({
-      lessons: lessons || [],
-      total: lessons?.length || 0,
+      lessons,
+      total: lessons.length,
     });
   } catch (error) {
     console.error('History error:', error);
+    next(error);
+  }
+});
+
+// GET /api/youtube/lessons/:id
+router.get('/lessons/:id', async (req, res, next) => {
+  try {
+    const { error: idError, value } = Joi.string().uuid().required().validate(req.params.id);
+    if (idError) {
+      idError.isJoi = true;
+      return next(idError);
+    }
+
+    const { data: lesson, error } = await req.supabase
+      .from('video_lessons')
+      .select('*')
+      .eq('id', value)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!lesson) {
+      return res.status(404).json({
+        error: 'lesson_not_found',
+        message: 'Lesson not found',
+      });
+    }
+
+    res.json(hydrateLessonResponse(lesson));
+  } catch (error) {
+    console.error('Get lesson error:', error);
+    next(error);
+  }
+});
+
+// PATCH /api/youtube/lessons/:id/progress
+router.patch('/lessons/:id/progress', async (req, res, next) => {
+  try {
+    const { error: idError, value: lessonId } = Joi.string()
+      .uuid()
+      .required()
+      .validate(req.params.id);
+    if (idError) {
+      idError.isJoi = true;
+      return next(idError);
+    }
+
+    const { error, value } = progressSchema.validate(req.body);
+    if (error) {
+      error.isJoi = true;
+      return next(error);
+    }
+
+    const { data: existing, error: existingErr } = await req.supabase
+      .from('video_lessons')
+      .select('id')
+      .eq('id', lessonId)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+    if (!existing) {
+      return res.status(404).json({
+        error: 'lesson_not_found',
+        message: 'Lesson not found',
+      });
+    }
+
+    const patch = pickProgressFields(value);
+    const { data: updated, error: updateErr } = await req.supabase
+      .from('video_lessons')
+      .update(patch)
+      .eq('id', lessonId)
+      .eq('user_id', req.user.id)
+      .select('id, current_step, status, updated_at')
+      .single();
+
+    if (updateErr) throw updateErr;
+
+    res.json({
+      success: true,
+      lessonId,
+      currentStep: updated?.current_step ?? value.currentStep ?? null,
+      status: updated?.status ?? value.status ?? null,
+      updatedAt: updated?.updated_at ?? patch.updated_at,
+    });
+  } catch (error) {
+    console.error('Save lesson progress error:', error);
     next(error);
   }
 });

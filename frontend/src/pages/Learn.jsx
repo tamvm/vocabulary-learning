@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Youtube,
   ArrowRight,
   Check,
   X,
@@ -17,102 +17,11 @@ import {
 } from 'lucide-react';
 import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
+import { LEARN_STEPS as STEPS } from '@/lib/learnSession';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
+import StepUrl from '@/components/Learn/StepUrl';
 import toast from 'react-hot-toast';
-
-// ─── Constants ────────────────────────────────────────────
-const STEPS = {
-  URL: 1,
-  VOCAB: 2,
-  STUDY: 3,
-  QUIZ: 4,
-};
-
-// ─── Step 1: YouTube URL Input ────────────────────────────
-function StepUrl({ onSubmit, loading, error }) {
-  const [url, setUrl] = useState('');
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    // Basic YouTube URL validation
-    const youtubeRegex = /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    if (!youtubeRegex.test(trimmed)) {
-      toast.error('Please enter a valid YouTube URL');
-      return;
-    }
-    onSubmit(trimmed);
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto">
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-900/20 mb-4">
-          <Youtube className="w-8 h-8 text-red-500" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Learn from YouTube
-        </h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Paste a YouTube video URL to extract vocabulary and test your listening comprehension
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="videoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            YouTube Video URL
-          </label>
-          <input
-            id="videoUrl"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
-            disabled={loading}
-            autoFocus
-          />
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading || !url.trim()}
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Extracting transcript...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5" />
-              Extract Vocabulary
-            </>
-          )}
-        </button>
-      </form>
-
-      {loading && (
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            This may take 30-60 seconds for long videos...
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Step 2: Vocabulary Selection ─────────────────────────
 function StepVocab({
@@ -374,9 +283,16 @@ function StepVocab({
 }
 
 // ─── Step 3: Content Comprehension Quiz ───────────────────
-function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
+function StepQuiz({
+  questions,
+  onSubmit,
+  onRetry,
+  onRetake,
+  onAnswersChange,
+  initialAnswers = {},
+}) {
   const [currentQ, setCurrentQ] = useState(0);
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState(() => initialAnswers || {});
   const [showResult, setShowResult] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -385,7 +301,11 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
 
   const selectAnswer = (optionIdx) => {
     if (showResult) return;
-    setAnswers((prev) => ({ ...prev, [currentQ]: optionIdx }));
+    setAnswers((prev) => {
+      const next = { ...prev, [currentQ]: optionIdx };
+      onAnswersChange?.(next);
+      return next;
+    });
   };
 
   const nextQuestion = () => {
@@ -507,6 +427,15 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          {onRetake && (
+            <button
+              onClick={onRetake}
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Retake Quiz
+            </button>
+          )}
           <button
             onClick={onRetry}
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium rounded-lg transition"
@@ -671,7 +600,7 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
             </button>
           )
         ) : (
-          isSelected && (
+          answers[currentQ] !== undefined && (
             <button
               onClick={nextQuestion}
               className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition flex items-center gap-2"
@@ -688,6 +617,7 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
 
 // ─── Main Learn Page ───────────────────────────────────────
 export default function Learn() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [step, setStep] = useState(STEPS.URL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -706,9 +636,88 @@ export default function Learn() {
 
   // Quiz results
   const [questions, setQuestions] = useState([]);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [quizResetKey, setQuizResetKey] = useState(0);
 
-  // ── Step 1: Analyze ──────────────────────────────────
-  const handleAnalyze = async (videoUrl) => {
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [resumeLoadingId, setResumeLoadingId] = useState(null);
+
+  const persistProgress = useCallback(async (id, payload) => {
+    if (!id) return;
+    try {
+      await youtubeAPI.saveProgress(id, payload);
+    } catch (err) {
+      console.warn('Failed to save lesson progress:', err);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await youtubeAPI.getHistory();
+      setHistory(response.data?.lessons || []);
+    } catch (err) {
+      console.warn('Failed to load lesson history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const generateQuiz = useCallback(async ({ videoUrl, id, words }) => {
+    setLoading(true);
+    try {
+      const vocabularyWords = (words || []).map((w) => w.word).filter(Boolean);
+      const response = await youtubeAPI.generateQuiz(videoUrl, {
+        lessonId: id,
+        vocabularyWords,
+      });
+      const nextQuestions = response.data.questions || [];
+      setQuestions(nextQuestions);
+      if (!nextQuestions.length) {
+        toast.error('Could not generate quiz questions. Try a different video.');
+      }
+      return nextQuestions;
+    } catch (err) {
+      toast.error('Failed to generate quiz: ' + (err.response?.data?.message || err.message));
+      setQuestions([]);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const applyHydratedLesson = useCallback((data, mode = 'resume') => {
+    const nextStep =
+      mode === 'review'
+        ? STEPS.STUDY
+        : mode === 'retake'
+        ? STEPS.QUIZ
+        : data.currentStep || STEPS.VOCAB;
+
+    setVideoInfo(data.videoInfo);
+    setVocabulary(data.vocabulary || []);
+    setUserCefrLevel(data.userCefrLevel || 'B2');
+    setLessonId(data.lesson?.id || null);
+    setCurrentVideoUrl(data.lesson?.videoUrl || '');
+    setCues(Array.isArray(data.cues) ? data.cues : []);
+    setSummary(data.summary || '');
+    setChapters(Array.isArray(data.chapters) ? data.chapters : []);
+    setStudyWords(data.studyWords || []);
+    setQuestions(data.questions || []);
+    setQuizAnswers(mode === 'retake' ? {} : data.quizAnswers || {});
+    setQuizResetKey((key) => key + 1);
+    setStep(nextStep);
+    setError(null);
+
+    if (data.lesson?.id) {
+      setSearchParams({ lesson: data.lesson.id }, { replace: true });
+    }
+
+    return nextStep;
+  }, [setSearchParams]);
+
+  const handleAnalyze = useCallback(async (videoUrl) => {
     setLoading(true);
     setError(null);
     setCurrentVideoUrl(videoUrl);
@@ -724,7 +733,14 @@ export default function Learn() {
       setCues(Array.isArray(data.cues) ? data.cues : []);
       setSummary(data.summary || '');
       setChapters(Array.isArray(data.chapters) ? data.chapters : []);
+      setStudyWords([]);
+      setQuestions([]);
+      setQuizAnswers({});
       setStep(STEPS.VOCAB);
+      if (data.lessonId) {
+        setSearchParams({ lesson: data.lessonId }, { replace: true });
+      }
+      loadHistory();
 
       if (data.totalFound === 0) {
         toast('No new vocabulary found for your level. Try another video.', { icon: 'ℹ️' });
@@ -738,7 +754,68 @@ export default function Learn() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadHistory, setSearchParams]);
+
+  const resumeLesson = useCallback(async (id, mode = 'resume') => {
+    if (!id) return;
+    setResumeLoadingId(id);
+    setError(null);
+    try {
+      const response = await youtubeAPI.getLesson(id);
+      const data = response.data;
+      const hasVocab = Array.isArray(data.vocabulary) && data.vocabulary.length > 0;
+      const hasStudy = Array.isArray(data.studyWords) && data.studyWords.length > 0;
+      const hasQuiz = Array.isArray(data.questions) && data.questions.length > 0;
+
+      if (!hasVocab && !hasStudy && !hasQuiz && data.lesson?.videoUrl) {
+        toast('This session has no saved vocabulary. Re-extracting the video…', { icon: 'ℹ️' });
+        await handleAnalyze(data.lesson.videoUrl);
+        return;
+      }
+
+      const nextStep = applyHydratedLesson(data, mode);
+
+      if (mode === 'retake') {
+        await persistProgress(id, {
+          currentStep: STEPS.QUIZ,
+          quizAnswers: {},
+          status: hasQuiz ? 'quiz_generated' : 'analyzed',
+        });
+      } else if (mode === 'review') {
+        await persistProgress(id, { currentStep: STEPS.STUDY });
+      }
+
+      if (nextStep === STEPS.QUIZ && !hasQuiz) {
+        toast('Generating quiz from the saved transcript…', { icon: 'ℹ️' });
+        await generateQuiz({
+          videoUrl: data.lesson?.videoUrl,
+          id,
+          words: data.studyWords,
+        });
+      } else {
+        toast.success(mode === 'retake' ? 'Quiz ready to retake' : 'Session restored');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to resume session';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setResumeLoadingId(null);
+    }
+  }, [applyHydratedLesson, generateQuiz, handleAnalyze, persistProgress]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  useEffect(() => {
+    const deepLinkId = searchParams.get('lesson');
+    if (deepLinkId) {
+      resumeLesson(deepLinkId);
+    }
+    // Deep-link resume only on first mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Step 2: Mark known ───────────────────────────────
   const handleToggleKnown = async (word, known) => {
@@ -796,6 +873,12 @@ export default function Learn() {
 
       setStudyWords(wordsToLearn);
       setStep(STEPS.STUDY);
+      persistProgress(lessonId, {
+        currentStep: STEPS.STUDY,
+        studyWordsSnapshot: wordsToLearn,
+        vocabularySnapshot: vocabulary,
+        status: 'analyzed',
+      });
     } catch (err) {
       toast.error('Failed to save words: ' + (err.response?.data?.message || err.message));
     } finally {
@@ -808,33 +891,34 @@ export default function Learn() {
     const words = vocabulary.filter((v) => !v.isKnown);
     setStudyWords(words);
     setStep(STEPS.STUDY);
+    persistProgress(lessonId, {
+      currentStep: STEPS.STUDY,
+      studyWordsSnapshot: words,
+      vocabularySnapshot: vocabulary,
+      status: 'analyzed',
+    });
   };
 
   // ── Study → Quiz ─────────────────────────────────────
   const handleContinueToQuiz = async () => {
     setStep(STEPS.QUIZ);
-    await handleGenerateQuiz();
+    persistProgress(lessonId, {
+      currentStep: STEPS.QUIZ,
+      studyWordsSnapshot: studyWords,
+    });
+    await generateQuiz({
+      videoUrl: currentVideoUrl,
+      id: lessonId,
+      words: studyWords,
+    });
   };
 
-  // ── Generate mixed quiz ──────────────────────────────
-  const handleGenerateQuiz = async () => {
-    setLoading(true);
-    try {
-      const vocabularyWords = studyWords.map((w) => w.word).filter(Boolean);
-      const response = await youtubeAPI.generateQuiz(currentVideoUrl, {
-        lessonId,
-        vocabularyWords,
-      });
-      setQuestions(response.data.questions || []);
-      if (!response.data.questions?.length) {
-        toast.error('Could not generate quiz questions. Try a different video.');
-      }
-    } catch (err) {
-      toast.error('Failed to generate quiz: ' + (err.response?.data?.message || err.message));
-      setQuestions([]);
-    } finally {
-      setLoading(false);
-    }
+  const handleQuizAnswersChange = (nextAnswers) => {
+    setQuizAnswers(nextAnswers);
+    persistProgress(lessonId, {
+      currentStep: STEPS.QUIZ,
+      quizAnswers: nextAnswers,
+    });
   };
 
   // ── Step 3: Submit quiz ──────────────────────────────
@@ -846,9 +930,20 @@ export default function Learn() {
         quizScore: score,
         quizTotal: total,
       });
+      loadHistory();
     } catch (err) {
       console.error('Failed to save quiz result:', err);
     }
+  };
+
+  const handleRetakeQuiz = () => {
+    setQuizAnswers({});
+    setQuizResetKey((key) => key + 1);
+    persistProgress(lessonId, {
+      currentStep: STEPS.QUIZ,
+      quizAnswers: {},
+      status: 'quiz_generated',
+    });
   };
 
   // ── Reset ────────────────────────────────────────────
@@ -857,6 +952,7 @@ export default function Learn() {
     setVideoInfo(null);
     setVocabulary([]);
     setQuestions([]);
+    setQuizAnswers({});
     setError(null);
     setCurrentVideoUrl('');
     setLessonId(null);
@@ -864,6 +960,8 @@ export default function Learn() {
     setSummary('');
     setChapters([]);
     setStudyWords([]);
+    setSearchParams({}, { replace: true });
+    loadHistory();
   };
 
   // ── Step indicator ───────────────────────────────────
@@ -920,7 +1018,17 @@ export default function Learn() {
 
         {/* Step content */}
         {step === STEPS.URL && (
-          <StepUrl onSubmit={handleAnalyze} loading={loading} error={error} />
+          <StepUrl
+            onSubmit={handleAnalyze}
+            loading={loading}
+            error={error}
+            history={history}
+            historyLoading={historyLoading}
+            resumeLoadingId={resumeLoadingId}
+            onContinue={(id) => resumeLesson(id, 'resume')}
+            onReview={(id) => resumeLesson(id, 'review')}
+            onRetake={(id) => resumeLesson(id, 'retake')}
+          />
         )}
 
         {step === STEPS.VOCAB && (
@@ -943,7 +1051,10 @@ export default function Learn() {
             chapters={chapters}
             summary={summary}
             studyWords={studyWords}
-            onBack={() => setStep(STEPS.VOCAB)}
+            onBack={() => {
+              setStep(STEPS.VOCAB);
+              persistProgress(lessonId, { currentStep: STEPS.VOCAB });
+            }}
             onContinueQuiz={handleContinueToQuiz}
             quizLoading={loading}
           />
@@ -963,10 +1074,13 @@ export default function Learn() {
               </div>
             ) : questions.length > 0 ? (
               <StepQuiz
+                key={`${lessonId || 'quiz'}-${quizResetKey}`}
                 questions={questions}
+                initialAnswers={quizAnswers}
+                onAnswersChange={handleQuizAnswersChange}
                 onSubmit={handleQuizSubmit}
                 onRetry={handleRetry}
-                videoInfo={videoInfo}
+                onRetake={handleRetakeQuiz}
               />
             ) : (
               <div className="max-w-2xl mx-auto text-center py-12">

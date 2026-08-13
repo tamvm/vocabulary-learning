@@ -245,6 +245,12 @@ export const youtubeAPI = {
 
   getHistory: () =>
     api.get('/youtube/history'),
+
+  getLesson: (id) =>
+    api.get(`/youtube/lessons/${id}`),
+
+  saveProgress: (id, data) =>
+    api.patch(`/youtube/lessons/${id}/progress`, data),
 }
 
 export default api
