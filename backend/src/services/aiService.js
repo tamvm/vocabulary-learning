@@ -139,7 +139,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
    * Analyze a chunk of content and extract vocabulary
    * @private
    */
-  async analyzeContentChunk(contentChunk, userCefrLevel, itemsPerChunk) {
+  async analyzeContentChunk(contentChunk, userCefrLevel, itemsPerChunk, options = {}) {
     const prompt = `You are an experienced English teacher.
 My English level: ${userCefrLevel} (CEFR).
 Analyze the content below and extract terms or expressions I probably don't know, to help me expand my English vocabulary.
@@ -184,7 +184,7 @@ Provide only valid JSON array without additional text. Focus on words that are c
       temperature: 0.3,
       max_tokens: 4000,
     }, {
-      timeout: 120000, // 2 minutes timeout
+      timeout: options.timeout || 120000,
     });
 
     if (response.choices && response.choices[0]) {
@@ -286,7 +286,13 @@ Provide only valid JSON array without additional text. Focus on words that are c
   }
 
   async analyzeWebsiteContent(content, userCefrLevel = 'B2', options = {}) {
-    const { limit = 20, onProgress = null, chunksToProcess = 3, offset = 0 } = options;
+    const {
+      limit = 20,
+      onProgress = null,
+      chunksToProcess = 3,
+      offset = 0,
+      chunkTimeout = 120000,
+    } = options;
 
     if (!content || typeof content !== 'string') {
       throw new Error('Content must be a non-empty string');
@@ -301,7 +307,9 @@ Provide only valid JSON array without additional text. Focus on words that are c
       // For small content, use single request
       if (content.length <= CHUNK_SIZE) {
         console.log('📝 Content is small, using single-chunk analysis');
-        const vocabulary = await this.analyzeContentChunk(content, userCefrLevel, limit);
+        const vocabulary = await this.analyzeContentChunk(content, userCefrLevel, limit, {
+          timeout: chunkTimeout,
+        });
         return {
           vocabulary: vocabulary.slice(0, limit),
           hasMore: false,
@@ -386,7 +394,12 @@ Provide only valid JSON array without additional text. Focus on words that are c
         }
 
         try {
-          const chunkResult = await this.analyzeContentChunk(chunk.trim(), userCefrLevel, itemsPerChunk);
+          const chunkResult = await this.analyzeContentChunk(
+            chunk.trim(),
+            userCefrLevel,
+            itemsPerChunk,
+            { timeout: chunkTimeout }
+          );
           results.push(chunkResult);
 
           // Add small delay between chunks to avoid rate limiting
@@ -902,12 +915,16 @@ Transcript:
 ${truncatedTranscript}
 """`;
 
-    const response = await this.makeRequest('chat/completions', {
-      model: this.config.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      max_tokens: 2000,
-    });
+    const response = await this.makeRequest(
+      'chat/completions',
+      {
+        model: this.config.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 2000,
+      },
+      { timeout: 45000 }
+    );
 
     if (!response.choices?.[0]) {
       throw new Error('No response from AI service for summary');

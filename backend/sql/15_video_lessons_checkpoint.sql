@@ -14,4 +14,8 @@ COMMENT ON COLUMN public.video_lessons.study_words_snapshot IS 'Words chosen for
 COMMENT ON COLUMN public.video_lessons.quiz_questions IS 'Generated quiz questions (avoid re-AI on resume)';
 COMMENT ON COLUMN public.video_lessons.quiz_answers IS 'Mid-quiz answers map { "0": 2, "1": 0 }';
 
+-- CONCURRENTLY cannot run inside Supabase's migration transaction.
+-- video_lessons is per-user and small; a short SHARE lock is acceptable.
+-- If this table is ever large, apply the index manually:
+-- CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_lessons_updated_at ON public.video_lessons(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_video_lessons_updated_at ON public.video_lessons(updated_at DESC);

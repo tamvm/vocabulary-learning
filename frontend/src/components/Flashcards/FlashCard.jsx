@@ -5,8 +5,17 @@ import {
   Clock,
   BookOpen,
 } from 'lucide-react';
+import { speakWord } from '../../lib/utils';
 
-const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProgress = false }) => {
+const FlashCard = ({
+  card,
+  isFlipped,
+  onFlip,
+  onRate,
+  showRating,
+  isRatingInProgress = false,
+  flashedRating = null,
+}) => {
   if (!card || !card.words) {
     return null;
   }
@@ -38,13 +47,15 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
     return `${Math.round(days / 365)}y`;
   };
 
-  const pronunciationAudio = (word) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(word);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.8;
-      speechSynthesis.speak(utterance);
+  const ratingButtonClass = (rating, activeClass) => {
+    const isFlashed = flashedRating === rating;
+    if (isFlashed) {
+      return `${activeClass} ring-4 ring-white scale-110 brightness-125 shadow-xl z-10`;
     }
+    if (isRatingInProgress) {
+      return 'bg-gray-400 cursor-not-allowed opacity-60';
+    }
+    return activeClass;
   };
 
   return (
@@ -72,22 +83,24 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
             </h2>
 
             {/* Pronunciation */}
-            {word.ipa_pronunciation && (
-              <div className="flex items-center space-x-2 mb-4">
+            <div className="flex items-center space-x-2 mb-4">
+              {word.ipa_pronunciation && (
                 <span className="text-lg text-gray-600 dark:text-gray-400">
                   /{word.ipa_pronunciation}/
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    pronunciationAudio(word.word);
-                  }}
-                  className="p-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
-                >
-                  <Volume2 className="h-5 w-5" />
-                </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  speakWord(word.word);
+                }}
+                className="p-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
+                title="Pronounce (P)"
+                aria-label="Pronounce word"
+              >
+                <Volume2 className="h-5 w-5" />
+              </button>
+            </div>
 
             {/* Word Type */}
             {word.word_type && (
@@ -118,22 +131,24 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">
                 {word.word}
               </h2>
-              {word.ipa_pronunciation && (
-                <div className="flex items-center justify-center space-x-2 mb-1">
+              <div className="flex items-center justify-center space-x-2 mb-1">
+                {word.ipa_pronunciation && (
                   <span className="text-sm text-gray-600 dark:text-gray-400">
                     /{word.ipa_pronunciation}/
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      pronunciationAudio(word.word);
-                    }}
-                    className="p-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
-                  >
-                    <Volume2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    speakWord(word.word);
+                  }}
+                  className="p-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
+                  title="Pronounce (P)"
+                  aria-label="Pronounce word"
+                >
+                  <Volume2 className="h-4 w-4" />
+                </button>
+              </div>
               {word.word_type && (
                 <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full inline-block">
                   {word.word_type}
@@ -207,11 +222,10 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
               onRate(2);
             }}
             disabled={isRatingInProgress}
-            className={`py-3 px-4 rounded-lg transition-colors flex flex-col items-center text-white ${
-              isRatingInProgress
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-orange-500 hover:bg-orange-600'
-            }`}
+            className={`py-3 px-4 rounded-lg transition-all duration-150 flex flex-col items-center text-white ${ratingButtonClass(
+              2,
+              'bg-orange-500 hover:bg-orange-600'
+            )}`}
           >
             <span className="font-bold">1</span>
             <span className="text-xs">Hard</span>
@@ -226,11 +240,10 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
               onRate(3);
             }}
             disabled={isRatingInProgress}
-            className={`py-3 px-4 rounded-lg transition-colors flex flex-col items-center text-white ${
-              isRatingInProgress
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600'
-            }`}
+            className={`py-3 px-4 rounded-lg transition-all duration-150 flex flex-col items-center text-white ${ratingButtonClass(
+              3,
+              'bg-green-500 hover:bg-green-600'
+            )}`}
           >
             <span className="font-bold">2</span>
             <span className="text-xs">Good</span>
@@ -245,11 +258,10 @@ const FlashCard = ({ card, isFlipped, onFlip, onRate, showRating, isRatingInProg
               onRate(4);
             }}
             disabled={isRatingInProgress}
-            className={`py-3 px-4 rounded-lg transition-colors flex flex-col items-center text-white ${
-              isRatingInProgress
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600'
-            }`}
+            className={`py-3 px-4 rounded-lg transition-all duration-150 flex flex-col items-center text-white ${ratingButtonClass(
+              4,
+              'bg-blue-500 hover:bg-blue-600'
+            )}`}
           >
             <span className="font-bold">3</span>
             <span className="text-xs">Easy</span>

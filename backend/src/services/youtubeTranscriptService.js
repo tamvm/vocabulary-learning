@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { transcript24Service } from './transcript24Service.js';
+import { withTimeout } from './youtubeAnalyzeHelpers.js';
 
 class YouTubeTranscriptService {
   constructor() {
@@ -242,23 +243,41 @@ class YouTubeTranscriptService {
     return formatted.trim();
   }
 
-  async extractVideoInfo(videoUrl) {
+  async extractVideoInfo(videoUrl, { timeoutMs = 15000 } = {}) {
     try {
       const videoId = this.extractVideoId(videoUrl);
       if (!videoId) {
         throw new Error('Invalid YouTube URL');
       }
 
-      return new Promise((resolve, reject) => {
+      return await new Promise((resolve, reject) => {
         const ytDlp = spawn('python3', [
           '-m', 'yt_dlp',
           '--dump-json',
           '--no-download',
+          '--socket-timeout', '10',
           videoUrl
         ]);
 
         let stdout = '';
         let stderr = '';
+        let settled = false;
+
+        const finish = (fn, value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          fn(value);
+        };
+
+        const timer = setTimeout(() => {
+          try {
+            ytDlp.kill('SIGKILL');
+          } catch (_) {
+            // ignore
+          }
+          finish(reject, new Error(`yt-dlp video info timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
 
         ytDlp.stdout.on('data', (data) => {
           stdout += data.toString();
@@ -266,6 +285,10 @@ class YouTubeTranscriptService {
 
         ytDlp.stderr.on('data', (data) => {
           stderr += data.toString();
+        });
+
+        ytDlp.on('error', (error) => {
+          finish(reject, new Error(`Failed to start yt-dlp: ${error.message}`));
         });
 
         ytDlp.on('close', (code) => {
@@ -280,7 +303,7 @@ class YouTubeTranscriptService {
                     source: 'youtube',
                   }))
                 : [];
-              resolve({
+              finish(resolve, {
                 title: videoInfo.title,
                 description: videoInfo.description,
                 duration: videoInfo.duration,
@@ -298,10 +321,10 @@ class YouTubeTranscriptService {
                 chapters,
               });
             } catch (parseError) {
-              reject(new Error('Failed to parse video information'));
+              finish(reject, new Error('Failed to parse video information'));
             }
           } else {
-            reject(new Error(`Failed to extract video info: ${stderr}`));
+            finish(reject, new Error(`Failed to extract video info: ${stderr}`));
           }
         });
       });
@@ -353,23 +376,32 @@ class YouTubeTranscriptService {
   /**
    * Prefer Transcript24 (timed captions); fall back to yt-dlp VTT.
    * Always returns cues when successful.
+   *
+   * @param {string} url
+   * @param {{ transcript24TimeoutMs?: number, metaTimeoutMs?: number }} [options]
    */
-  async processYouTubeUrl(url) {
+  async processYouTubeUrl(url, options = {}) {
     if (!this.isYouTubeUrl(url)) {
       throw new Error('URL is not a valid YouTube URL');
     }
+
+    const transcript24TimeoutMs = options.transcript24TimeoutMs ?? 60000;
+    const metaTimeoutMs = options.metaTimeoutMs ?? 8000;
 
     // 1) Transcript24 primary
     if (transcript24Service.isConfigured()) {
       try {
         console.log('📝 Fetching transcript via Transcript24...');
-        const t24 = await transcript24Service.transcribe(url, { prefer: 'auto' });
+        const t24 = await transcript24Service.transcribe(url, {
+          prefer: 'auto',
+          timeoutMs: transcript24TimeoutMs,
+        });
 
-        // Optionally enrich chapters/thumbnail from yt-dlp (best-effort, non-blocking failure)
+        // Optionally enrich chapters/thumbnail from yt-dlp (best-effort, short timeout)
         let chapters = Array.isArray(t24.videoInfo?.chapters) ? t24.videoInfo.chapters : [];
         let enrichedInfo = { ...t24.videoInfo };
         try {
-          const ytMeta = await this.extractVideoInfo(url);
+          const ytMeta = await this.extractVideoInfo(url, { timeoutMs: metaTimeoutMs });
           if ((!chapters || !chapters.length) && ytMeta.chapters?.length) {
             chapters = ytMeta.chapters;
           }
@@ -411,9 +443,9 @@ class YouTubeTranscriptService {
       console.log('TRANSCRIPT24_API_KEY not set — using yt-dlp transcript path');
     }
 
-    // 2) yt-dlp fallback
+    // 2) yt-dlp fallback (often unavailable in Alpine/prod — keep short failure path)
     try {
-      return await this.processWithYtDlp(url);
+      return await withTimeout(this.processWithYtDlp(url), 45000, 'yt-dlp transcript');
     } catch (error) {
       return {
         success: false,
