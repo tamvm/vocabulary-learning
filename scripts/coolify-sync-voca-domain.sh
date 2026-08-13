@@ -331,4 +331,4 @@ fi
 
 echo "Done. Frontend rebuild is required for VITE_* changes."
 echo "Expect ${API_HOST}/api/words without auth → 401 (not Cloudflare 502)."
-echo "Cloudflare DNS required: A api → 178.156.247.159 (proxied)."
+echo "Cloudflare: voca-api.kenchange.com via cloudflared tunnel n8n (see scripts/cloudflared-voca-api.sh)."
