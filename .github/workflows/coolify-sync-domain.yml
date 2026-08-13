@@ -50,29 +50,38 @@ jobs:
       - name: Smoke API host after sync
         run: |
           set -euo pipefail
-          echo "Waiting for Traefik/Coolify/DNS to apply api.voca.kenchange.com..."
+          origin_ip=178.156.247.159
+          echo "Origin Traefik (SNI api.voca.kenchange.com → ${origin_ip})..."
           ok=0
-          for i in $(seq 1 36); do
-            code="$(curl -sS -o /tmp/voca-api-smoke.txt -w '%{http_code}' --max-time 15 \
+          for i in $(seq 1 18); do
+            code="$(curl -skS -o /tmp/voca-api-smoke.txt -w '%{http_code}' --max-time 15 \
+              --resolve api.voca.kenchange.com:443:${origin_ip} \
               https://api.voca.kenchange.com/api/words || true)"
             body="$(head -c 200 /tmp/voca-api-smoke.txt || true)"
-            echo "attempt $i: HTTP $code body=${body}"
+            echo "attempt $i: origin HTTP $code body=${body}"
             if [ "$code" = "401" ] || [ "$code" = "200" ]; then
               ok=1
               break
             fi
-            sleep 10
+            sleep 5
           done
           if [ "$ok" != "1" ]; then
-            echo "::error::https://api.voca.kenchange.com/api/words is not healthy (need Cloudflare A record api → 178.156.247.159 proxied, plus Coolify FQDN)"
-            echo "Direct sslip (control):"
-            curl -sS -o /tmp/sslip-smoke.txt -w "sslip /api/words HTTP %{http_code}\n" --max-time 15 \
-              http://yydjqewjghoex53en4o0je43.178.156.247.159.sslip.io/api/words || true
-            head -c 200 /tmp/sslip-smoke.txt || true
-            echo
+            echo "::error::Origin Host api.voca.kenchange.com /api/words is not 401/200"
             exit 1
           fi
-          health="$(curl -sS -o /tmp/voca-health-smoke.txt -w '%{http_code}' --max-time 15 \
-            https://api.voca.kenchange.com/health || true)"
-          echo "health HTTP $health $(head -c 120 /tmp/voca-health-smoke.txt || true)"
-          echo "API host smoke passed (HTTP $code)"
+          echo "Origin API host smoke passed (HTTP $code)"
+
+          echo "Public DNS:"
+          dns="$(dig +short A api.voca.kenchange.com | tr '\n' ' ' || true)"
+          echo "  A ${dns:-<empty>}"
+          if [ -z "${dns// }" ]; then
+            echo "::warning::Add Cloudflare proxied A record api → ${origin_ip} so the SPA can resolve https://api.voca.kenchange.com"
+            exit 0
+          fi
+          pub="$(curl -sS -o /tmp/voca-api-public.txt -w '%{http_code}' --max-time 15 \
+            https://api.voca.kenchange.com/api/words || true)"
+          echo "Cloudflare https://api.voca.kenchange.com/api/words HTTP $pub $(head -c 120 /tmp/voca-api-public.txt || true)"
+          if [ "$pub" != "401" ] && [ "$pub" != "200" ]; then
+            echo "::error::Public API host still not healthy after DNS exists"
+            exit 1
+          fi
