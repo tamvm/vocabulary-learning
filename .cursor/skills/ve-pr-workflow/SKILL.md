@@ -107,7 +107,7 @@ Use a merge commit (no squash) to match repo rules.
 Push/merge to `main` should run **CI** then **Coolify Deploy** (project `i8luqt7n49kugwqwfbcyrfvl`). Then:
 
 1. Watch `gh run list --workflow "Coolify Deploy"` and Coolify Deployments. If stuck, `gh workflow run coolify-deploy.yml` or Redeploy in Coolify UI (do not mutate env/secrets routinely).
-2. Smoke-test the app in a **browser** against the Coolify public URL(s). Do not rely on curl alone for UI regressions.
+2. Smoke-test the app in a **browser** at **https://voca.kenchange.com**. Do not rely on curl alone for UI regressions.
 3. Confirm auth still works (Supabase session) and learning flows load.
 4. Report deploy status and smoke-test result to the user.
 
@@ -134,4 +134,4 @@ If the worktree is dirty, stop and ask — do not force-remove silently.
 - Skip worktree cleanup after a successful merge
 - Force-push to `main` or skip hooks
 - Rely only on title automation without addressing review comments
-- Mutate Coolify secrets as part of routine deploy
+- Mutate Coolify secrets as part of routine deploy (use `coolify-sync-domain.yml` only when asked to change the public domain / CORS)

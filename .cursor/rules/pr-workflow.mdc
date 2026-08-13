@@ -55,4 +55,4 @@ Checklist before `[ready]` / merge:
 - Merge without an explicit user ask
 - Skip worktree cleanup after a successful merge
 - Force-push to `main` or skip hooks
-- Change Coolify env/secrets as part of routine deploy
+- Change Coolify env/secrets as part of routine deploy (explicit domain/CORS sync is `coolify-sync-domain.yml`)
