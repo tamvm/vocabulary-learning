@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { quizService } from '../services/quizService.js';
+import { buildWordSearchOrFilter } from '../utils/postgrestFilter.js';
 
 const router = express.Router();
 
@@ -70,11 +71,9 @@ router.get('/', async (req, res, next) => {
       `)
       .eq('user_id', req.user.id);
 
-    // Add search filter
+    // Add search filter (q is escaped for ILIKE wildcards + PostgREST grammar)
     if (q) {
-      query = query.or(
-        `word.ilike.%${q}%,definition.ilike.%${q}%,example_sentence.ilike.%${q}%,vietnamese_translation.ilike.%${q}%,synonyms.ilike.%${q}%`
-      );
+      query = query.or(buildWordSearchOrFilter(q));
     }
 
     // NEW: Group filtering (takes precedence over collection filter)
@@ -125,9 +124,7 @@ router.get('/', async (req, res, next) => {
       .eq('user_id', req.user.id);
 
     if (q) {
-      countQuery = countQuery.or(
-        `word.ilike.%${q}%,definition.ilike.%${q}%,example_sentence.ilike.%${q}%,vietnamese_translation.ilike.%${q}%,synonyms.ilike.%${q}%`
-      );
+      countQuery = countQuery.or(buildWordSearchOrFilter(q));
     }
 
     // NEW: Apply group filter to count query
