@@ -1,0 +1,119 @@
+name: Coolify Deploy
+
+# Deploy Magic English (backend + frontend) to Coolify when CI succeeds on
+# main/master (including after a PR merge), or when run manually.
+#
+# Pattern matches other apps on this Hetzner host (self-hosted runner → local
+# Coolify API). Git "Auto Deploy" alone is unreliable here because the apps use
+# deploy keys without a working GitHub App webhook.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which Coolify apps to deploy"
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - backend
+          - frontend
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        (
+          github.event.workflow_run.head_branch == 'main' ||
+          github.event.workflow_run.head_branch == 'master'
+        )
+      )
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy to Coolify
+        env:
+          COOLIFY_BASE_URL: ${{ vars.COOLIFY_BASE_URL || 'http://localhost:8000' }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          TARGET: ${{ github.event.inputs.target || 'both' }}
+          BACKEND_UUID: yydjqewjghoex53en4o0je43
+          FRONTEND_UUID: zsq5wwe7xltdrrlp5ldctr3g
+        run: |
+          set -euo pipefail
+
+          resolve_token() {
+            if [ -n "${COOLIFY_API_TOKEN:-}" ]; then
+              echo "Using COOLIFY_API_TOKEN from GitHub Actions secrets"
+              return 0
+            fi
+            local candidates=(
+              "${HOME}/.coolify/github-actions.token"
+              "${HOME}/.coolify-tokens-rotated-2026-08-08/github-actions.txt"
+            )
+            local f
+            for f in "${candidates[@]}"; do
+              if [ -f "$f" ]; then
+                COOLIFY_API_TOKEN="$(tr -d '[:space:]' <"$f")"
+                export COOLIFY_API_TOKEN
+                echo "Using Coolify API token from runner file: $f"
+                return 0
+              fi
+            done
+            echo "::error::Missing Coolify API token (set secret COOLIFY_API_TOKEN or place token on the runner)"
+            exit 1
+          }
+
+          resolve_token
+
+          echo "Using Coolify at: ${COOLIFY_BASE_URL}"
+
+          deploy_one() {
+            local uuid="$1" name="$2"
+            echo "Deploying $name ($uuid)..."
+            args=(
+              -sS -w "\n%{http_code}" --max-time 60
+              -X GET "${COOLIFY_BASE_URL%/}/api/v1/deploy?uuid=${uuid}&force=false"
+              -H "Authorization: Bearer ${COOLIFY_API_TOKEN}"
+              -H "Accept: application/json"
+            )
+            # Only needed when calling a public Coolify hostname behind Access
+            if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+              args+=(
+                -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+                -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+              )
+            fi
+            resp=$(curl "${args[@]}")
+            body=$(echo "$resp" | sed '$d')
+            code=$(echo "$resp" | tail -n1)
+            echo "Response HTTP $code: $body"
+            if [ "$code" != "200" ] && [ "$code" != "201" ] && [ "$code" != "202" ]; then
+              echo "::error::Coolify deploy failed for $name (HTTP $code)"
+              exit 1
+            fi
+            echo "Queued $name"
+          }
+
+          case "$TARGET" in
+            backend) deploy_one "$BACKEND_UUID" "backend" ;;
+            frontend) deploy_one "$FRONTEND_UUID" "frontend" ;;
+            both)
+              deploy_one "$BACKEND_UUID" "backend"
+              deploy_one "$FRONTEND_UUID" "frontend"
+              ;;
+            *)
+              echo "::error::Unknown target: $TARGET"
+              exit 1
+              ;;
+          esac
+
+          echo "Done. Check Coolify deployments for vocabulary-learning backend/frontend."

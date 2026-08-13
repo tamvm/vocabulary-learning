@@ -5,7 +5,7 @@ This folder contains all the detailed documentation for the Magic English applic
 ## 📚 Documentation Index
 
 ### 🚀 Deployment & Setup
-- **[Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md)** - Production Coolify project `ik6tx8h3y70t1zvuyqvb9et1` + GitHub auto-deploy
+- **[Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md)** - Production Coolify project `i8luqt7n49kugwqwfbcyrfvl` + deploy-on-merge via Actions
 - **[Self-hosted CI runner](ci-self-hosted-runner.md)** - GitHub Actions self-hosted runner for CI
 - **[Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)** - Legacy Railway notes (Coolify is preferred)
 - **[GitHub Setup Guide](GITHUB_SETUP.md)** - Setting up GitHub repository and workflows

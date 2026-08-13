@@ -146,7 +146,7 @@ This will start:
 
 ### Production Deployment
 
-**Preferred:** Coolify (Docker) — project `ik6tx8h3y70t1zvuyqvb9et1`.  
+**Preferred:** Coolify (Docker) — project `i8luqt7n49kugwqwfbcyrfvl` (`vocabulary-learning`).  
 See **[Coolify Deployment Guide](docs/COOLIFY_DEPLOYMENT.md)** for GitHub App + Auto Deploy on `main`.
 
 | Service | Dockerfile | Port |
