@@ -13,7 +13,7 @@
     "build:client": "cd frontend && npm run build",
     "start": "cd backend && npm start",
     "install:deps": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "test": "cd backend && node test_quiz_fsrs.js",
+    "test": "cd backend && npm test",
     "lint": "cd frontend && npm run lint",
     "reset-today": "./scripts/reset-today.sh",
     "reset-today:dry-run": "./scripts/reset-today.sh --dry-run"
