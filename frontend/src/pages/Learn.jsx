@@ -698,7 +698,7 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
             </button>
           )
         ) : (
-          isSelected && (
+          answers[currentQ] !== undefined && (
             <button
               onClick={nextQuestion}
               className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition flex items-center gap-2"
@@ -743,7 +743,10 @@ export default function Learn() {
   const persistProgress = useCallback(async (id, data) => {
     if (!id) return;
     try {
-      await youtubeAPI.saveProgress(id, data);
+      const response = await youtubeAPI.saveProgress(id, data);
+      if (response.data?.skipped) {
+        console.warn('Lesson progress not persisted (migration may be pending)');
+      }
     } catch (err) {
       console.warn('Could not save lesson progress:', err.message);
     }
@@ -812,6 +815,10 @@ export default function Learn() {
       const response = await youtubeAPI.getLesson(lessonSummary.id);
       const lesson = response.data.lesson;
       if (!lesson) throw new Error('Lesson not found');
+      if (!lesson.videoUrl) {
+        toast.error('This session is missing a video URL and cannot be continued');
+        return;
+      }
 
       setLessonId(lesson.id);
       setCurrentVideoUrl(lesson.videoUrl || '');
@@ -837,6 +844,12 @@ export default function Learn() {
         targetStep = STEPS.VOCAB;
       } else if (targetStep === STEPS.VOCAB && !(lesson.vocabulary?.length)) {
         toast('Re-analyzing this video to restore vocabulary…');
+        await handleAnalyze(lesson.videoUrl);
+        return;
+      }
+
+      if (targetStep === STEPS.STUDY && !lesson.videoInfo?.videoId) {
+        toast.error('This session is missing video details — try Extract Vocabulary again');
         await handleAnalyze(lesson.videoUrl);
         return;
       }

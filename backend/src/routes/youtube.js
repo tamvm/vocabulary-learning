@@ -381,35 +381,44 @@ router.post('/quiz', async (req, res, next) => {
     });
 
     try {
-      let query = req.supabase
-        .from('video_lessons')
-        .update({
-          quiz_total: validatedQuestions.length,
-          quiz_questions: validatedQuestions,
-          status: 'quiz_generated',
-          current_step: 'quiz',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', req.user.id);
+      const quizUpdate = {
+        quiz_total: validatedQuestions.length,
+        quiz_questions: validatedQuestions,
+        status: 'quiz_generated',
+        current_step: 'quiz',
+        updated_at: new Date().toISOString(),
+      };
 
-      if (cachedLessonId) {
-        query = query.eq('id', cachedLessonId);
-      } else {
-        query = query.eq('video_id', videoId);
-      }
-      const { error: quizUpdateErr } = await query;
-      if (quizUpdateErr) {
-        // Fallback without new columns
-        let fallback = req.supabase
+      let targetLessonId = cachedLessonId;
+      if (!targetLessonId && videoId) {
+        const { data: latest } = await req.supabase
           .from('video_lessons')
-          .update({
-            quiz_total: validatedQuestions.length,
-            status: 'quiz_generated',
-          })
-          .eq('user_id', req.user.id);
-        if (cachedLessonId) fallback = fallback.eq('id', cachedLessonId);
-        else fallback = fallback.eq('video_id', videoId);
-        await fallback;
+          .select('id')
+          .eq('user_id', req.user.id)
+          .eq('video_id', videoId)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        targetLessonId = latest?.id || null;
+      }
+
+      if (targetLessonId) {
+        const { error: quizUpdateErr } = await req.supabase
+          .from('video_lessons')
+          .update(quizUpdate)
+          .eq('user_id', req.user.id)
+          .eq('id', targetLessonId);
+        if (quizUpdateErr) {
+          await req.supabase
+            .from('video_lessons')
+            .update({
+              quiz_total: validatedQuestions.length,
+              status: 'quiz_generated',
+            })
+            .eq('user_id', req.user.id)
+            .eq('id', targetLessonId);
+        }
+        cachedLessonId = targetLessonId;
       }
     } catch (err) {
       console.log('Could not update video lesson:', err.message);
@@ -668,9 +677,9 @@ router.patch('/lessons/:id/progress', async (req, res, next) => {
 
     const schema = Joi.object({
       currentStep: Joi.string().valid('vocab', 'study', 'quiz', 'completed').optional(),
-      studyWords: Joi.array().items(Joi.object().unknown(true)).optional(),
-      vocabulary: Joi.array().items(Joi.object().unknown(true)).optional(),
-      quizQuestions: Joi.array().items(Joi.object().unknown(true)).optional(),
+      studyWords: Joi.array().items(Joi.object().unknown(true)).max(100).optional(),
+      vocabulary: Joi.array().items(Joi.object().unknown(true)).max(100).optional(),
+      quizQuestions: Joi.array().items(Joi.object().unknown(true)).max(30).optional(),
       wordsSaved: Joi.number().integer().min(0).optional(),
     }).min(1);
 
