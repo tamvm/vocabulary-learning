@@ -1,13 +1,13 @@
 name: Coolify Sync Domain
 
-# Apply production hosts on Coolify (FQDN + CORS/API env).
+# Apply production hosts on Coolify (FQDN + CORS/API env) and cloudflared ingress.
 # UI: https://voca.kenchange.com
-# API: https://api.voca.kenchange.com (Host rule, not PathPrefix /api)
-# Runs on the self-hosted runner so it can reach Coolify at localhost:8000.
+# API: https://voca-api.kenchange.com (Host rule, not PathPrefix /api)
+# Runs on the self-hosted runner (same Hetzner host as Coolify + cloudflared).
 
 on:
   workflow_dispatch:
-  # One-shot: TOM-100 — remove this push trigger after api.voca.kenchange.com works
+  # One-shot: TOM-100 — remove this push trigger after voca-api.kenchange.com works
   push:
     branches:
       - cursor/tom-100-api-subdomain-503a
@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Diagnose Coolify access on runner
+      - name: Diagnose Coolify + cloudflared on runner
         run: |
           set -euo pipefail
           echo "HOME=$HOME USER=$(whoami)"
@@ -30,10 +30,14 @@ jobs:
           ls -la "$HOME/.coolify-tokens-rotated-2026-08-08" 2>/dev/null || echo "  no rotated tokens dir"
           echo "Docker access:"
           if command -v docker >/dev/null 2>&1; then
-            docker ps --format 'table {{.Names}}\t{{.Status}}' 2>&1 | head -40 || true
+            docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>&1 | head -50 || true
           else
             echo "  docker not installed/available"
           fi
+          echo "cloudflared:"
+          command -v cloudflared && cloudflared --version || echo "  not in PATH"
+          ps -eo args= | grep -E '[c]loudflared' || echo "  no process"
+          systemctl is-active cloudflared 2>/dev/null || true
 
       - name: Sync voca.kenchange.com on Coolify
         env:
@@ -47,16 +51,24 @@ jobs:
           chmod +x scripts/coolify-sync-voca-domain.sh
           scripts/coolify-sync-voca-domain.sh
 
+      - name: Configure cloudflared for voca-api.kenchange.com
+        env:
+          API_HOSTNAME: voca-api.kenchange.com
+          BACKEND_UUID: yydjqewjghoex53en4o0je43
+        run: |
+          chmod +x scripts/cloudflared-voca-api.sh
+          scripts/cloudflared-voca-api.sh
+
       - name: Smoke API host after sync
         run: |
           set -euo pipefail
           origin_ip=178.156.247.159
-          echo "Origin Traefik (SNI api.voca.kenchange.com → ${origin_ip})..."
+          echo "Origin Traefik (SNI voca-api.kenchange.com → ${origin_ip})..."
           ok=0
           for i in $(seq 1 18); do
             code="$(curl -skS -o /tmp/voca-api-smoke.txt -w '%{http_code}' --max-time 15 \
-              --resolve api.voca.kenchange.com:443:${origin_ip} \
-              https://api.voca.kenchange.com/api/words || true)"
+              --resolve voca-api.kenchange.com:443:${origin_ip} \
+              https://voca-api.kenchange.com/api/words || true)"
             body="$(head -c 200 /tmp/voca-api-smoke.txt || true)"
             echo "attempt $i: origin HTTP $code body=${body}"
             if [ "$code" = "401" ] || [ "$code" = "200" ]; then
@@ -66,22 +78,25 @@ jobs:
             sleep 5
           done
           if [ "$ok" != "1" ]; then
-            echo "::error::Origin Host api.voca.kenchange.com /api/words is not 401/200"
-            exit 1
+            echo "::warning::Origin Host voca-api.kenchange.com /api/words is not 401/200 yet (cloudflared path may still work)"
+          else
+            echo "Origin API host smoke passed (HTTP $code)"
           fi
-          echo "Origin API host smoke passed (HTTP $code)"
 
-          echo "Public DNS:"
-          dns="$(dig +short A api.voca.kenchange.com | tr '\n' ' ' || true)"
-          echo "  A ${dns:-<empty>}"
-          if [ -z "${dns// }" ]; then
-            echo "::warning::Add Cloudflare proxied A record api → ${origin_ip} so the SPA can resolve https://api.voca.kenchange.com"
-            exit 0
-          fi
-          pub="$(curl -sS -o /tmp/voca-api-public.txt -w '%{http_code}' --max-time 15 \
-            https://api.voca.kenchange.com/api/words || true)"
-          echo "Cloudflare https://api.voca.kenchange.com/api/words HTTP $pub $(head -c 120 /tmp/voca-api-public.txt || true)"
-          if [ "$pub" != "401" ] && [ "$pub" != "200" ]; then
-            echo "::error::Public API host still not healthy after DNS exists"
+          echo "Public https://voca-api.kenchange.com/api/words"
+          pub_ok=0
+          for i in $(seq 1 18); do
+            pub="$(curl -sS -o /tmp/voca-api-public.txt -w '%{http_code}' --max-time 15 \
+              https://voca-api.kenchange.com/api/words || true)"
+            echo "attempt $i: public HTTP $pub $(head -c 120 /tmp/voca-api-public.txt || true)"
+            if [ "$pub" = "401" ] || [ "$pub" = "200" ]; then
+              pub_ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$pub_ok" != "1" ]; then
+            echo "::error::https://voca-api.kenchange.com/api/words still not 401/200 (need cloudflared ingress + Coolify FQDN)"
             exit 1
           fi
+          echo "Public API host smoke passed (HTTP $pub)"

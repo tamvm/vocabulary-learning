@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Sync Coolify FQDNs + public env for Magic English production.
 # UI:  https://voca.kenchange.com
-# API: https://api.voca.kenchange.com  (Host rule — do NOT use PathPrefix /api)
+# API: https://voca-api.kenchange.com  (Host rule — do NOT use PathPrefix /api)
 # Intended to run on the Hetzner self-hosted runner (Coolify on localhost:8000).
 # Never prints secret values — only keys, FQDNs, and URL hostnames.
 
 set -euo pipefail
 
 FRONTEND_ORIGIN="https://voca.kenchange.com"
-API_HOST="https://api.voca.kenchange.com"
+API_HOST="https://voca-api.kenchange.com"
 # Axios baseURL includes /api because Express mounts routes at /api/*
 VITE_API_URL="${API_HOST}/api"
 BACKEND_UUID="${BACKEND_UUID:-yydjqewjghoex53en4o0je43}"

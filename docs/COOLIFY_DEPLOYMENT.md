@@ -7,7 +7,7 @@ Production deploy target for this repo is **Coolify** (Docker on Hetzner).
 | App | Public URL | Coolify UUID | Dockerfile | Container port |
 |-----|------------|--------------|------------|----------------|
 | Frontend | https://voca.kenchange.com | `zsq5wwe7xltdrrlp5ldctr3g` | `frontend/Dockerfile` | `3102` |
-| Backend API | https://api.voca.kenchange.com | `yydjqewjghoex53en4o0je43` | `backend/Dockerfile` | `3012` (Coolify exposes `3112`) |
+| Backend API | https://voca-api.kenchange.com | `yydjqewjghoex53en4o0je43` | `backend/Dockerfile` | `3012` (Coolify exposes `3112`) |
 
 Hetzner fallback (Coolify sslip.io, HTTP only):
 
@@ -81,7 +81,7 @@ RATE_LIMIT_MAX=1000
 ```bash
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=...
-VITE_API_URL=https://api.voca.kenchange.com/api
+VITE_API_URL=https://voca-api.kenchange.com/api
 ```
 
 Exact names must match `frontend` usage (`VITE_*`). Rebuild after changing build-time vars.
@@ -89,14 +89,14 @@ Exact names must match `frontend` usage (`VITE_*`). Rebuild after changing build
 `VITE_SUPABASE_URL` must be a hostname that resolves (NXDOMAIN breaks Google OAuth — the browser never reaches `/auth/v1/authorize`).
 
 3. Point **https://voca.kenchange.com** at the frontend service.
-4. Point **https://api.voca.kenchange.com** at the backend (dedicated host — Coolify Host rule). Do **not** use PathPrefix `https://voca.kenchange.com/api`: Traefik strips `/api` (`/api/words` → `/words` 404) and Cloudflare 502s that router.
-5. Cloudflare DNS: proxied **A** `api` → origin `178.156.247.159`. SSL/TLS **Full** (not Full Strict) while the origin cert is Traefik’s default.
-6. Set backend `FRONTEND_URL=https://voca.kenchange.com` and redeploy backend (CORS). The SPA calls `https://api.voca.kenchange.com/api` (cross-origin; Helmet CORP is `cross-origin`).
+4. Point **https://voca-api.kenchange.com** at the backend (dedicated host — Coolify Host rule). Do **not** use PathPrefix `https://voca.kenchange.com/api`: Traefik strips `/api` (`/api/words` → `/words` 404) and Cloudflare 502s that router.
+5. Cloudflare: public hostname **`voca-api.kenchange.com`** via **cloudflared** on the Hetzner VPS (`scripts/cloudflared-voca-api.sh`). Do not use PathPrefix `voca.kenchange.com/api`.
+6. Set backend `FRONTEND_URL=https://voca.kenchange.com` and redeploy backend (CORS). The SPA calls `https://voca-api.kenchange.com/api` (cross-origin; Helmet CORP is `cross-origin`).
 7. In Supabase Auth → URL configuration:
    - Site URL: `https://voca.kenchange.com`
    - Redirect URLs: `https://voca.kenchange.com/**`
 
-To apply domain + CORS/API env on the live Coolify apps: Actions → **Coolify Sync Domain** (or `scripts/coolify-sync-voca-domain.sh` on the Hetzner runner).
+To apply domain + CORS/API env on the live Coolify apps: Actions → **Coolify Sync Domain** (or `scripts/coolify-sync-voca-domain.sh` on the Hetzner runner). That workflow also runs `scripts/cloudflared-voca-api.sh` to add `voca-api.kenchange.com` to the VPS tunnel ingress.
 
 ---
 
@@ -110,7 +110,7 @@ These apps are connected with a **deploy key**, not a GitHub App source. Coolify
 |---------|----------|
 | PR merged / push → `main` or `master` | After workflow **CI** succeeds, deploy backend + frontend |
 | Actions → **Coolify Deploy** → Run workflow | Manual deploy (`both` / `backend` / `frontend`) |
-| Actions → **Coolify Sync Domain** | Set frontend FQDN to `voca.kenchange.com`, backend FQDN to `api.voca.kenchange.com`, plus `FRONTEND_URL` / `VITE_API_URL`, and redeploy |
+| Actions → **Coolify Sync Domain** | Set frontend FQDN to `voca.kenchange.com`, backend FQDN to `voca-api.kenchange.com`, plus `FRONTEND_URL` / `VITE_API_URL`, and redeploy |
 
 The job runs on the repo’s **self-hosted** runner (same Hetzner host as Coolify) and calls:
 
@@ -159,9 +159,9 @@ After merge to `main`:
 | Merge does nothing | CI failed (deploy waits on CI); Coolify Deploy workflow missing on `main`; runner offline |
 | Deploy job auth error | Runner token at `~/.coolify/github-actions.token`, or secret `COOLIFY_API_TOKEN` |
 | Build fails on `npm` / missing lockfile | Dockerfiles use `npm install`; ensure `package.json` present in base dir |
-| Frontend calls wrong API | Rebuild frontend after fixing `VITE_API_URL` to `https://api.voca.kenchange.com/api` |
+| Frontend calls wrong API | Rebuild frontend after fixing `VITE_API_URL` to `https://voca-api.kenchange.com/api` |
 | CORS errors | Backend `FRONTEND_URL` must be `https://voca.kenchange.com` |
 | Google login: host not found (`*.supabase.co`) | `VITE_SUPABASE_URL` is stale/NXDOMAIN; copy a live `SUPABASE_URL` from the backend app and rebuild frontend |
-| `/api` on the UI host returns 502 | Use `https://api.voca.kenchange.com` (Host FQDN), not PathPrefix `voca.kenchange.com/api` |
-| `api.voca.kenchange.com` NXDOMAIN | Add Cloudflare proxied A record `api` → `178.156.247.159` |
+| `/api` on the UI host returns 502 | Use `https://voca-api.kenchange.com` (Host FQDN), not PathPrefix `voca.kenchange.com/api` |
+| `voca-api.kenchange.com` 404 from Cloudflare | Add cloudflared ingress for that hostname on the VPS (`scripts/cloudflared-voca-api.sh`); catch-all tunnel rule is `http_status:404` |
 | Puppeteer/Chromium issues on backend | Image already installs Chromium in `backend/Dockerfile`; check Coolify build logs / memory |
