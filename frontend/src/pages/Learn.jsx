@@ -22,6 +22,9 @@ import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
 import LessonSummary from '@/components/Learn/LessonSummary';
+import WordDetailModal, {
+  normalizeWordDetail,
+} from '@/components/Learn/WordDetailModal';
 import toast from 'react-hot-toast';
 
 // ─── Step 2: Vocabulary Selection ─────────────────────────
@@ -38,6 +41,7 @@ function StepVocab({
   saving,
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [detailIdx, setDetailIdx] = useState(null);
   const [selectedIndices, setSelectedIndices] = useState(() => {
     // Pre-select only truly new words (not known, not already in vocabulary)
     const set = new Set();
@@ -57,6 +61,16 @@ function StepVocab({
       }
       return next;
     });
+  };
+
+  const selectWordFromDetail = (idx) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+    setDetailIdx(null);
+    toast.success('Added to selection for new words');
   };
 
   const toggleAll = () => {
@@ -179,12 +193,20 @@ function StepVocab({
                 {isSelected && <Check className="w-3 h-3" />}
               </button>
 
-              {/* Word content */}
+              {/* Word content — click word to open full glossary */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-900 dark:text-white">
+                  <button
+                    type="button"
+                    className="font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 hover:underline text-left"
+                    title="View definition & sample sentence"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailIdx(idx);
+                    }}
+                  >
                     {item.word}
-                  </span>
+                  </button>
                   {item.cefrLevel && (
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getCefrColor(
@@ -208,6 +230,11 @@ function StepVocab({
                     🇻🇳 {item.vietnameseTranslation}
                   </p>
                 )}
+                {item.exampleSentence ? (
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 italic line-clamp-1">
+                    {item.exampleSentence}
+                  </p>
+                ) : null}
               </div>
 
               {/* Know/Learned toggle */}
@@ -283,6 +310,20 @@ function StepVocab({
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+
+      <WordDetailModal
+        open={detailIdx != null}
+        wordData={
+          detailIdx != null
+            ? normalizeWordDetail(vocabulary[detailIdx])
+            : null
+        }
+        alreadyAdded={detailIdx != null && selectedIndices.has(detailIdx)}
+        onClose={() => setDetailIdx(null)}
+        onAdd={() => {
+          if (detailIdx != null) selectWordFromDetail(detailIdx);
+        }}
+      />
     </div>
   );
 }
@@ -891,6 +932,56 @@ export default function Learn() {
     }
   };
 
+  // ── Study: add a looked-up word into New words ───────
+  const handleAddStudyWord = async (wordDetail) => {
+    const normalized = normalizeWordDetail(wordDetail);
+    if (!normalized.word) return;
+
+    const exists = studyWords.some(
+      (w) => w.word?.toLowerCase() === normalized.word.toLowerCase()
+    );
+    if (exists) {
+      toast('Already in new words', { icon: 'ℹ️' });
+      return;
+    }
+
+    const payload = {
+      word: normalized.word,
+      definition: normalized.definition,
+      wordType: normalized.wordType,
+      cefrLevel: normalized.cefrLevel,
+      ipaPronunciation: normalized.ipaPronunciation,
+      exampleSentence: normalized.exampleSentence,
+      notes: normalized.notes,
+      tags: normalized.tags || [],
+      vietnameseTranslation: normalized.vietnameseTranslation,
+      synonyms: normalized.synonyms,
+    };
+
+    const response = await wordsAPI.bulkOperation({
+      operation: 'import',
+      words: [payload],
+    });
+
+    if (response.data?.error) {
+      throw new Error(response.data.message || 'Failed to import word');
+    }
+
+    try {
+      await youtubeAPI.markKnown(normalized.word, true);
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    const next = [...studyWords, payload];
+    setStudyWords(next);
+    persistProgress(lessonId, {
+      currentStep: STEPS.STUDY,
+      studyWordsSnapshot: next,
+      vocabularySnapshot: vocabulary,
+    });
+  };
+
   // ── Step 2→Study without saving ──────────────────────
   const handleSkipToStudy = () => {
     const words = vocabulary.filter((v) => !v.isKnown);
@@ -1063,6 +1154,7 @@ export default function Learn() {
               persistProgress(lessonId, { currentStep: STEPS.VOCAB });
             }}
             onContinueQuiz={handleContinueToQuiz}
+            onAddStudyWord={handleAddStudyWord}
             quizLoading={loading}
           />
         )}

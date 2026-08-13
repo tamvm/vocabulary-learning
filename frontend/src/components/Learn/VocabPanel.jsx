@@ -1,7 +1,7 @@
 import React from 'react';
 import { getCefrColor } from '@/lib/utils';
 
-export default function VocabPanel({ words = [], selectedWord, onSelectWord }) {
+export default function VocabPanel({ words = [], selectedWord, onSelectWord, onOpenWord }) {
   if (!words.length) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-gray-500 dark:text-gray-400 p-4">
@@ -20,7 +20,10 @@ export default function VocabPanel({ words = [], selectedWord, onSelectWord }) {
           <button
             key={`${item.word}-${idx}`}
             type="button"
-            onClick={() => onSelectWord?.(item.word)}
+            onClick={() => {
+              onSelectWord?.(item.word);
+              onOpenWord?.(item);
+            }}
             className={`w-full text-left p-3 rounded-lg border transition ${
               active
                 ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
@@ -40,6 +43,9 @@ export default function VocabPanel({ words = [], selectedWord, onSelectWord }) {
                   {item.cefrLevel}
                 </span>
               )}
+              {item.wordType ? (
+                <span className="text-[10px] italic text-gray-400">{item.wordType}</span>
+              ) : null}
             </div>
             {item.definition && (
               <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
@@ -51,6 +57,11 @@ export default function VocabPanel({ words = [], selectedWord, onSelectWord }) {
                 {item.vietnameseTranslation}
               </p>
             )}
+            {item.exampleSentence ? (
+              <p className="text-[11px] text-gray-500 dark:text-gray-500 mt-1 italic line-clamp-1">
+                {item.exampleSentence}
+              </p>
+            ) : null}
           </button>
         );
       })}
