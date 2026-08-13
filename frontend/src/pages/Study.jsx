@@ -329,19 +329,16 @@ const Study = () => {
 
       setReviewedCards(prev => [...prev, reviewedCard]);
 
-      // Update stats
-      let newCardsStudied = 0;
-      setStudyStats(prev => {
-        newCardsStudied = prev.cardsStudied + 1;
-        return {
-          ...prev,
-          cardsStudied: newCardsStudied,
-          totalAnswers: prev.totalAnswers + 1,
-          correctAnswers: prev.correctAnswers + (rating >= 3 ? 1 : 0),
-          newCards: prev.newCards + (cardToReview.state === 'new' ? 1 : 0),
-          reviewCards: prev.reviewCards + (cardToReview.state !== 'new' ? 1 : 0),
-        };
-      });
+      // Update stats (compute next count before setState so the % 10 check is reliable)
+      const newCardsStudied = studyStats.cardsStudied + 1;
+      setStudyStats(prev => ({
+        ...prev,
+        cardsStudied: newCardsStudied,
+        totalAnswers: prev.totalAnswers + 1,
+        correctAnswers: prev.correctAnswers + (rating >= 3 ? 1 : 0),
+        newCards: prev.newCards + (cardToReview.state === 'new' ? 1 : 0),
+        reviewCards: prev.reviewCards + (cardToReview.state !== 'new' ? 1 : 0),
+      }));
 
       // Show review page after 10 cards
       if (newCardsStudied % 10 === 0) {
@@ -359,7 +356,7 @@ const Study = () => {
       setFlashedRating(null);
       setIsRatingInProgress(false);
     }
-  }, [currentCard, isRatingInProgress, cardStartTime, reviewCard]);
+  }, [currentCard, isRatingInProgress, cardStartTime, reviewCard, studyStats.cardsStudied]);
 
   // Keyboard shortcuts
   const handleKeyPress = useCallback((event) => {
