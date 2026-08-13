@@ -64,7 +64,7 @@ class Transcript24Service {
     return Boolean(this.apiKey && this.apiKey.trim());
   }
 
-  async transcribe(url, { prefer = 'auto' } = {}) {
+  async transcribe(url, { prefer = 'auto', timeoutMs = 60000 } = {}) {
     if (!this.isConfigured()) {
       const err = new Error('TRANSCRIPT24_API_KEY is not configured');
       err.code = 'transcript24_not_configured';
@@ -77,7 +77,8 @@ class Transcript24Service {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const effectiveTimeout = Math.max(5000, Number(timeoutMs) || 60000);
+    const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
 
     let response;
     try {

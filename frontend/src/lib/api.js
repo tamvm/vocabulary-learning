@@ -37,10 +37,25 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.error || error.message || 'Something went wrong'
+    const status = error.response?.status
+    let message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      'Something went wrong'
+
+    // Gateway / client timeouts (common on long /learn analyze) — surface a clear action
+    if (status === 502 || status === 504) {
+      message =
+        error.response?.data?.message ||
+        'The server took too long analyzing this video (gateway timeout). Try a shorter video, or retry once.'
+    } else if (error.code === 'ECONNABORTED' || /timeout/i.test(String(message))) {
+      message =
+        'Analysis timed out. Long videos can take a while — please retry, or try a shorter clip.'
+    }
 
     // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401) {
+    if (status === 401) {
       // Redirect to login page or refresh token
       window.dispatchEvent(new CustomEvent('auth:unauthorized'))
     }
@@ -226,16 +241,20 @@ export const groupsAPI = {
 
 export const youtubeAPI = {
   analyze: (videoUrl) =>
-    api.post('/youtube/analyze', { videoUrl }),
+    api.post('/youtube/analyze', { videoUrl }, { timeout: 180000 }),
 
   generateQuiz: (videoUrl, options = {}) =>
-    api.post('/youtube/quiz', {
-      videoUrl,
-      lessonId: options.lessonId,
-      vocabularyWordIds: options.vocabularyWordIds,
-      vocabularyWords: options.vocabularyWords,
-      questionCount: options.questionCount,
-    }),
+    api.post(
+      '/youtube/quiz',
+      {
+        videoUrl,
+        lessonId: options.lessonId,
+        vocabularyWordIds: options.vocabularyWordIds,
+        vocabularyWords: options.vocabularyWords,
+        questionCount: options.questionCount,
+      },
+      { timeout: 180000 }
+    ),
 
   complete: (data) =>
     api.post('/youtube/complete', data),
