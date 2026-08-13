@@ -189,7 +189,8 @@ Extend `youtubeAPI` in `frontend/src/lib/api.js` for enriched analyze + quiz bod
 ### Phase 0 — Plan / contract (this doc)
 
 - [x] Lock UX decisions with product owner  
-- [ ] Create Linear issue + link this plan  
+- [x] Linear: [TOM-102](https://linear.app/timtam-wp/issue/TOM-102/video-learn-study-ux-transcript-side-by-side-summary-chapters-mixed)  
+
 
 ### Phase 1 — Transcript foundation (backend)
 
