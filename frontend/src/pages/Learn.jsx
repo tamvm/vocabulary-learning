@@ -18,13 +18,15 @@ import {
 import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
 import GroupSelector from '@/components/GroupSelector';
+import StepStudy from '@/components/Learn/StepStudy';
 import toast from 'react-hot-toast';
 
 // ─── Constants ────────────────────────────────────────────
 const STEPS = {
   URL: 1,
   VOCAB: 2,
-  QUIZ: 3,
+  STUDY: 3,
+  QUIZ: 4,
 };
 
 // ─── Step 1: YouTube URL Input ────────────────────────────
@@ -363,7 +365,7 @@ function StepVocab({
           disabled={saving}
           className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium rounded-lg transition"
         >
-          Skip to Quiz
+          Continue to Study
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -539,10 +541,23 @@ function StepQuiz({ questions, onSubmit, onRetry, videoInfo }) {
 
       {/* Question card */}
       <div className="p-6 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 mb-4">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-            {question.question}
-          </h3>
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="min-w-0 flex-1">
+            {question.type && (
+              <span
+                className={`inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                  question.type === 'vocab'
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                    : 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300'
+                }`}
+              >
+                {question.type === 'vocab' ? 'Vocabulary' : 'Comprehension'}
+              </span>
+            )}
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              {question.question}
+            </h3>
+          </div>
           {question.timestamp && (
             <a
               href={`#`}
@@ -684,6 +699,10 @@ export default function Learn() {
   const [userCefrLevel, setUserCefrLevel] = useState('B2');
   const [lessonId, setLessonId] = useState(null);
   const [currentVideoUrl, setCurrentVideoUrl] = useState('');
+  const [cues, setCues] = useState([]);
+  const [summary, setSummary] = useState('');
+  const [chapters, setChapters] = useState([]);
+  const [studyWords, setStudyWords] = useState([]);
 
   // Quiz results
   const [questions, setQuestions] = useState([]);
@@ -702,6 +721,9 @@ export default function Learn() {
       setVocabulary(data.vocabulary);
       setUserCefrLevel(data.userCefrLevel);
       setLessonId(data.lessonId);
+      setCues(Array.isArray(data.cues) ? data.cues : []);
+      setSummary(data.summary || '');
+      setChapters(Array.isArray(data.chapters) ? data.chapters : []);
       setStep(STEPS.VOCAB);
 
       if (data.totalFound === 0) {
@@ -755,7 +777,7 @@ export default function Learn() {
     }
   };
 
-  // ── Step 2: Learn selected words ─────────────────────
+  // ── Step 2: Learn selected words → Study ─────────────
   const handleLearn = async (wordsToLearn, groupId) => {
     setSaving(true);
     try {
@@ -767,24 +789,13 @@ export default function Learn() {
       if (response.data.words) {
         toast.success(`Added ${response.data.words.length} words to your vocabulary`);
 
-        // Auto-mark saved words as known to skip them in future analyses
         for (const w of wordsToLearn) {
           try { await youtubeAPI.markKnown(w.word, true); } catch (_) {}
         }
-
-        // Update lesson
-        if (lessonId) {
-          try {
-            await youtubeAPI.complete({
-              lessonId,
-              wordsSaved: response.data.words.length,
-            });
-          } catch (_) {}
-        }
       }
 
-      setStep(STEPS.QUIZ);
-      await handleGenerateQuiz();
+      setStudyWords(wordsToLearn);
+      setStep(STEPS.STUDY);
     } catch (err) {
       toast.error('Failed to save words: ' + (err.response?.data?.message || err.message));
     } finally {
@@ -792,19 +803,30 @@ export default function Learn() {
     }
   };
 
-  // ── Step 2→3: Skip to quiz ───────────────────────────
-  const handleSkipToQuiz = async () => {
+  // ── Step 2→Study without saving ──────────────────────
+  const handleSkipToStudy = () => {
+    const words = vocabulary.filter((v) => !v.isKnown);
+    setStudyWords(words);
+    setStep(STEPS.STUDY);
+  };
+
+  // ── Study → Quiz ─────────────────────────────────────
+  const handleContinueToQuiz = async () => {
     setStep(STEPS.QUIZ);
     await handleGenerateQuiz();
   };
 
-  // ── Step 3: Generate quiz ────────────────────────────
+  // ── Generate mixed quiz ──────────────────────────────
   const handleGenerateQuiz = async () => {
     setLoading(true);
     try {
-      const response = await youtubeAPI.generateQuiz(currentVideoUrl);
-      setQuestions(response.data.questions);
-      if (response.data.totalQuestions === 0) {
+      const vocabularyWords = studyWords.map((w) => w.word).filter(Boolean);
+      const response = await youtubeAPI.generateQuiz(currentVideoUrl, {
+        lessonId,
+        vocabularyWords,
+      });
+      setQuestions(response.data.questions || []);
+      if (!response.data.questions?.length) {
         toast.error('Could not generate quiz questions. Try a different video.');
       }
     } catch (err) {
@@ -838,13 +860,18 @@ export default function Learn() {
     setError(null);
     setCurrentVideoUrl('');
     setLessonId(null);
+    setCues([]);
+    setSummary('');
+    setChapters([]);
+    setStudyWords([]);
   };
 
   // ── Step indicator ───────────────────────────────────
   const steps = [
     { num: 1, label: 'Video', active: step >= STEPS.URL, current: step === STEPS.URL },
     { num: 2, label: 'Vocabulary', active: step >= STEPS.VOCAB, current: step === STEPS.VOCAB },
-    { num: 3, label: 'Quiz', active: step >= STEPS.QUIZ, current: step === STEPS.QUIZ },
+    { num: 3, label: 'Study', active: step >= STEPS.STUDY, current: step === STEPS.STUDY },
+    { num: 4, label: 'Quiz', active: step >= STEPS.QUIZ, current: step === STEPS.QUIZ },
   ];
 
   return (
@@ -855,7 +882,7 @@ export default function Learn() {
 
       <div className="py-6 px-4 sm:px-6 lg:px-8">
         {/* Step indicator */}
-        <div className="max-w-2xl mx-auto mb-8">
+        <div className="max-w-3xl mx-auto mb-8">
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>
@@ -902,10 +929,23 @@ export default function Learn() {
             vocabulary={vocabulary}
             userCefrLevel={userCefrLevel}
             onLearn={handleLearn}
-            onSkip={handleSkipToQuiz}
+            onSkip={handleSkipToStudy}
             onToggleKnown={handleToggleKnown}
             onBack={handleRetry}
             saving={saving}
+          />
+        )}
+
+        {step === STEPS.STUDY && (
+          <StepStudy
+            videoInfo={videoInfo}
+            cues={cues}
+            chapters={chapters}
+            summary={summary}
+            studyWords={studyWords}
+            onBack={() => setStep(STEPS.VOCAB)}
+            onContinueQuiz={handleContinueToQuiz}
+            quizLoading={loading}
           />
         )}
 

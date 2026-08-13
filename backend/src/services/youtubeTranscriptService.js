@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { transcript24Service } from './transcript24Service.js';
 
 class YouTubeTranscriptService {
   constructor() {
@@ -271,6 +272,14 @@ class YouTubeTranscriptService {
           if (code === 0) {
             try {
               const videoInfo = JSON.parse(stdout);
+              const chapters = Array.isArray(videoInfo.chapters)
+                ? videoInfo.chapters.map((ch) => ({
+                    start: typeof ch.start_time === 'number' ? ch.start_time : 0,
+                    end: typeof ch.end_time === 'number' ? ch.end_time : null,
+                    title: ch.title || 'Chapter',
+                    source: 'youtube',
+                  }))
+                : [];
               resolve({
                 title: videoInfo.title,
                 description: videoInfo.description,
@@ -280,7 +289,13 @@ class YouTubeTranscriptService {
                 view_count: videoInfo.view_count,
                 like_count: videoInfo.like_count,
                 channel: videoInfo.channel,
-                tags: videoInfo.tags
+                tags: videoInfo.tags,
+                thumbnail:
+                  videoInfo.thumbnail ||
+                  (Array.isArray(videoInfo.thumbnails) && videoInfo.thumbnails.length
+                    ? videoInfo.thumbnails[videoInfo.thumbnails.length - 1].url
+                    : null),
+                chapters,
               });
             } catch (parseError) {
               reject(new Error('Failed to parse video information'));
@@ -295,40 +310,114 @@ class YouTubeTranscriptService {
     }
   }
 
+  async processWithYtDlp(url) {
+    const [videoInfo, transcript] = await Promise.all([
+      this.extractVideoInfo(url),
+      this.getTranscript(url),
+    ]);
+
+    const cues = (transcript || [])
+      .map((entry) => ({
+        start: entry.start,
+        end: entry.end,
+        text: String(entry.text || '').replace(/\s+/g, ' ').trim(),
+      }))
+      .filter((c) => c.text);
+
+    const content = this.formatTranscript(cues.length ? cues : transcript);
+
+    if (!content || content.length < 100) {
+      throw new Error(
+        'Transcript is too short or unavailable. The video may not have English subtitles.'
+      );
+    }
+
+    return {
+      success: true,
+      provider: 'ytdlp',
+      mode: 'raw',
+      content,
+      cues,
+      title: videoInfo.title,
+      excerpt: content.substring(0, 200) + '...',
+      url,
+      chapters: videoInfo.chapters || [],
+      videoInfo: {
+        ...videoInfo,
+        transcript_length: content.length,
+        transcript_entries: cues.length || transcript.length,
+      },
+    };
+  }
+
+  /**
+   * Prefer Transcript24 (timed captions); fall back to yt-dlp VTT.
+   * Always returns cues when successful.
+   */
   async processYouTubeUrl(url) {
     if (!this.isYouTubeUrl(url)) {
       throw new Error('URL is not a valid YouTube URL');
     }
 
-    try {
-      // Get video info and transcript in parallel
-      const [videoInfo, transcript] = await Promise.all([
-        this.extractVideoInfo(url),
-        this.getTranscript(url)
-      ]);
+    // 1) Transcript24 primary
+    if (transcript24Service.isConfigured()) {
+      try {
+        console.log('📝 Fetching transcript via Transcript24...');
+        const t24 = await transcript24Service.transcribe(url, { prefer: 'auto' });
 
-      const content = this.formatTranscript(transcript);
-
-      if (!content || content.length < 100) {
-        throw new Error('Transcript is too short or unavailable. The video may not have English subtitles.');
-      }
-
-      return {
-        success: true,
-        content,
-        title: videoInfo.title,
-        excerpt: content.substring(0, 200) + '...',
-        url,
-        videoInfo: {
-          ...videoInfo,
-          transcript_length: content.length,
-          transcript_entries: transcript.length
+        // Optionally enrich chapters/thumbnail from yt-dlp (best-effort, non-blocking failure)
+        let chapters = Array.isArray(t24.videoInfo?.chapters) ? t24.videoInfo.chapters : [];
+        let enrichedInfo = { ...t24.videoInfo };
+        try {
+          const ytMeta = await this.extractVideoInfo(url);
+          if ((!chapters || !chapters.length) && ytMeta.chapters?.length) {
+            chapters = ytMeta.chapters;
+          }
+          enrichedInfo = {
+            ...enrichedInfo,
+            title: enrichedInfo.title || ytMeta.title,
+            duration: enrichedInfo.duration ?? ytMeta.duration,
+            thumbnail: enrichedInfo.thumbnail || ytMeta.thumbnail,
+            channel: enrichedInfo.channel || ytMeta.channel || ytMeta.uploader,
+            description: enrichedInfo.description || ytMeta.description,
+          };
+        } catch (metaErr) {
+          console.warn('yt-dlp meta enrich skipped:', metaErr.message);
         }
-      };
+
+        return {
+          success: true,
+          provider: 'transcript24',
+          mode: t24.mode,
+          taskCredits: t24.taskCredits,
+          content: t24.content,
+          cues: t24.cues,
+          title: enrichedInfo.title || t24.title,
+          excerpt: t24.content.substring(0, 200) + '...',
+          url,
+          chapters,
+          videoInfo: {
+            ...enrichedInfo,
+            transcript_length: t24.content.length,
+            transcript_entries: t24.cues.length,
+          },
+        };
+      } catch (t24Err) {
+        console.warn(
+          `Transcript24 failed (${t24Err.code || 'error'}): ${t24Err.message}. Falling back to yt-dlp.`
+        );
+      }
+    } else {
+      console.log('TRANSCRIPT24_API_KEY not set — using yt-dlp transcript path');
+    }
+
+    // 2) yt-dlp fallback
+    try {
+      return await this.processWithYtDlp(url);
     } catch (error) {
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   }
