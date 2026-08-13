@@ -13,7 +13,8 @@ Primary transcript via Transcript24 (timed captions); yt-dlp fallback; analyze r
 - T1.6 Quiz loads cache by `lessonId` when present (no re-call Transcript24/yt-dlp)
 
 ## Secrets / ops
-- Hermes (Tony Mac) → Cursor secret + Coolify: `TRANSCRIPT24_API_KEY`
+- Canonical: Hetzner `openclaw` host → `~/.openclaw/openclaw.json` key `TRANSCRIPT24_API_KEY` (verified working)
+- Also set on Coolify backend for Magic English production
 - Egress: `api.transcript24.com`
 - MVP: `prefer: "auto"`, **no** `sceneDetection`
 

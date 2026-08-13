@@ -95,7 +95,9 @@ Mobile: stack video → summary/chapters → words → transcript.
 **Docs:** https://www.transcript24.com/transcript-api  
 **Base:** `https://api.transcript24.com`  
 **Auth:** `Authorization: Bearer <API_KEY>`  
-**Secret:** `TRANSCRIPT24_API_KEY` (copy from Hermes env on Mac Tony → Cursor secrets + Coolify backend). Never commit the key.
+**Secret:** `TRANSCRIPT24_API_KEY`  
+**Canonical source (verified 2026-08-13):** Hetzner VPS `openclaw` → `~/.openclaw/openclaw.json` (also mirrored in several host `.env` files).  
+Wire the same value into Coolify backend env for Magic English. Never commit the key. Smoke-tested: `POST /transcribe` → HTTP 200, `mode: raw`.
 
 ```http
 POST /transcribe
