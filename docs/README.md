@@ -5,7 +5,9 @@ This folder contains all the detailed documentation for the Magic English applic
 ## 📚 Documentation Index
 
 ### 🚀 Deployment & Setup
-- **[Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)** - Complete guide for deploying to Railway platform
+- **[Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md)** - Production Coolify project `ik6tx8h3y70t1zvuyqvb9et1` + GitHub auto-deploy
+- **[Self-hosted CI runner](ci-self-hosted-runner.md)** - GitHub Actions self-hosted runner for CI
+- **[Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)** - Legacy Railway notes (Coolify is preferred)
 - **[GitHub Setup Guide](GITHUB_SETUP.md)** - Setting up GitHub repository and workflows
 - **[Migration Guide](MIGRATION_GUIDE.md)** - Database migrations and version updates
 
@@ -21,17 +23,20 @@ This folder contains all the detailed documentation for the Magic English applic
 ```
 magic_english/
 ├── README.md              # Main project overview
-├── CLAUDE.md               # Claude Code configuration
-├── docs/                   # 📚 All documentation (this folder)
+├── .cursorrules           # Cursor agent project rules
+├── .cursor/               # Cursor rules + skills (PR workflow, discipline)
+├── docs/                  # 📚 All documentation (this folder)
 │   ├── README.md          # This file - documentation index
+│   ├── COOLIFY_DEPLOYMENT.md
+│   ├── ci-self-hosted-runner.md
 │   ├── RAILWAY_DEPLOYMENT.md
 │   ├── GITHUB_SETUP.md
 │   ├── MIGRATION_GUIDE.md
 │   ├── CONTRIBUTING.md
 │   ├── RELEASE.md
 │   └── QUIZ_FSRS_IMPLEMENTATION.md
-├── frontend/               # React frontend application
-├── backend/                # Node.js backend API
+├── frontend/              # React frontend application
+├── backend/               # Node.js backend API
 └── scripts/               # Utility scripts
 ```
 
@@ -40,10 +45,12 @@ magic_english/
 ### For Developers
 - Start with [Contributing Guidelines](CONTRIBUTING.md)
 - Check the [main README](../README.md) for setup instructions
-- Review [CLAUDE.md](../CLAUDE.md) for AI assistant configuration
+- Follow [.cursorrules](../.cursorrules) for AI / Cursor agent configuration
 
 ### For Deployment
-- Use [Railway Deployment Guide](RAILWAY_DEPLOYMENT.md) for hosting
+- Use [Coolify Deployment Guide](COOLIFY_DEPLOYMENT.md) for production hosting + auto-deploy
+- Use [Self-hosted CI runner](ci-self-hosted-runner.md) for Actions
+- [Railway Deployment Guide](RAILWAY_DEPLOYMENT.md) is legacy
 - Follow [GitHub Setup](GITHUB_SETUP.md) for repository management
 - Apply [Migration Guide](MIGRATION_GUIDE.md) for database updates
 

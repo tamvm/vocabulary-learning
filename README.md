@@ -146,19 +146,13 @@ This will start:
 
 ### Production Deployment
 
-#### Backend (Node.js)
-Deploy to platforms like:
-- **Heroku**: `git push heroku main`
-- **Railway**: Connect GitHub repository
-- **DigitalOcean App Platform**: Use app spec
-- **AWS/GCP/Azure**: Use container deployment
+**Preferred:** Coolify (Docker) — project `ik6tx8h3y70t1zvuyqvb9et1`.  
+See **[Coolify Deployment Guide](docs/COOLIFY_DEPLOYMENT.md)** for GitHub App + Auto Deploy on `main`.
 
-#### Frontend (Static Site)
-Deploy to platforms like:
-- **Vercel**: `vercel --prod`
-- **Netlify**: `netlify deploy --prod`
-- **GitHub Pages**: Use GitHub Actions
-- **Cloudflare Pages**: Connect GitHub repository
+| Service | Dockerfile | Port |
+|---------|------------|------|
+| Backend | `backend/Dockerfile` | `3012` |
+| Frontend | `frontend/Dockerfile` | `3102` |
 
 #### Environment Variables for Production
 Update these for production:
@@ -289,7 +283,8 @@ Supports multiple AI providers:
 
 For detailed documentation on specific topics, see the [docs/](docs/) folder:
 
-- **[Deployment Guide](docs/RAILWAY_DEPLOYMENT.md)** - Deploy to Railway platform
+- **[Coolify Deployment](docs/COOLIFY_DEPLOYMENT.md)** - Production Coolify + auto-deploy
+- **[Self-hosted CI](docs/ci-self-hosted-runner.md)** - GitHub Actions self-hosted runner
 - **[GitHub Setup](docs/GITHUB_SETUP.md)** - Repository and CI/CD setup
 - **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Database migrations
 - **[Quiz FSRS Implementation](docs/QUIZ_FSRS_IMPLEMENTATION.md)** - Advanced spaced repetition
