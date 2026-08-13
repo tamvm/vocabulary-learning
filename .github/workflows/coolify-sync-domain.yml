@@ -7,10 +7,6 @@ name: Coolify Sync Domain
 
 on:
   workflow_dispatch:
-  # One-shot: TOM-100 — remove this push trigger after voca-api.kenchange.com works
-  push:
-    branches:
-      - cursor/tom-100-api-subdomain-503a
 
 jobs:
   sync:
