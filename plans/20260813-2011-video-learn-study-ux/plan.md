@@ -21,10 +21,11 @@ Upgrade existing `/learn` so the learner can:
 | Layout | Video top; columns = new words \| transcript |
 | Seek | Click transcript cue → `player.seekTo(start)` |
 | Order | Vocab first → then listen/study → then quiz |
-| Chapters | Prefer YouTube `chapters` from yt-dlp; else AI segmentation |
+| Chapters | Prefer YouTube chapters when available; else AI segmentation |
 | Quiz | Both comprehension MCQ **and** vocab cloze/context |
 | Summary | Always (short main-ideas blurb) |
 | Chapters UI | Show when available (YT or AI) |
+| Transcript source | **Primary: Transcript24 API**; fallback: existing yt-dlp VTT |
 
 ## What already exists (reuse)
 
@@ -33,8 +34,8 @@ Upgrade existing `/learn` so the learner can:
 | `/learn` 3-step wizard | `frontend/src/pages/Learn.jsx` | Extend steps; split components |
 | Analyze + vocab filter | `POST /api/youtube/analyze` | Keep; enrich response |
 | Comprehension quiz | `POST /api/youtube/quiz` | Extend prompt / types |
-| VTT parse with timestamps | `youtubeTranscriptService.parseVTT` | **Keep cues** (today discarded in `formatTranscript`) |
-| yt-dlp video JSON | `extractVideoInfo` | Add `chapters`, `thumbnail` |
+| VTT parse with timestamps | `youtubeTranscriptService.parseVTT` | Fallback path; keep cues |
+| yt-dlp video JSON | `extractVideoInfo` | Fallback meta/`chapters`; optional supplement |
 | Lesson row | `video_lessons` | Add cache columns |
 | Vocab bulk + flashcards | `/api/words/bulk` | Unchanged |
 | Known words | `known_words` | Unchanged |
@@ -89,17 +90,42 @@ Mobile: stack video → summary/chapters → words → transcript.
 
 ## Backend design
 
-### 1. Timed transcript + chapters from yt-dlp
+### 1. Transcript provider: Transcript24 (primary) + yt-dlp (fallback)
 
-**File:** `backend/src/services/youtubeTranscriptService.js`
+**Docs:** https://www.transcript24.com/transcript-api  
+**Base:** `https://api.transcript24.com`  
+**Auth:** `Authorization: Bearer <API_KEY>`  
+**Secret:** `TRANSCRIPT24_API_KEY` (copy from Hermes env on Mac Tony → Cursor secrets + Coolify backend). Never commit the key.
 
-- `processYouTubeUrl` returns:
-  - `content` (plain text, for AI — keep)
-  - `cues: [{ start, end, text }]` (seconds; merge tiny adjacent cues if needed)
-  - `chapters` from yt-dlp JSON when present: `[{ start_time, title }]`
-  - `thumbnail` / duration / channel (already partial)
-- `extractVideoInfo`: pass through `chapters`, `thumbnail`, `duration`
-- Optional: dedupe overlapping auto-caption lines (common VTT noise)
+```http
+POST /transcribe
+Content-Type: application/json
+Authorization: Bearer <API_KEY>
+
+{ "url": "https://www.youtube.com/watch?v=...", "prefer": "auto" }
+```
+
+Response (relevant fields):
+
+- `caption[]`: `{ start_time: "HH:MM:SS.mmm", end_time, text }` → map to internal `cues[{ start, end, text }]` (seconds)
+- `meta`: `platform`, `id`, `title`, `duration`, `image`, …
+- `mode`: `raw` (platform captions) or `asr` (AI) — prefer `auto` so captions win when present
+- Credits: `raw` = 1/video; `asr` = ceil(minutes). **Do not enable `sceneDetection` in MVP** (billed per-minute even for raw)
+
+**New file:** `backend/src/services/transcript24Service.js`
+
+- `transcribe(url, { prefer: 'auto' })` → normalized `{ content, cues, videoInfo, provider: 'transcript24', mode }`
+- Parse `start_time`/`end_time` strings → seconds
+- Clear errors for missing key / insufficient credits / fetch failure
+
+**Orchestrator (extend)** `youtubeTranscriptService.processYouTubeUrl` (or thin wrapper used by routes):
+
+1. If `TRANSCRIPT24_API_KEY` set → call Transcript24  
+2. On success → return cues + meta  
+3. On missing key / hard failure → fallback existing yt-dlp VTT + `extractVideoInfo` (keep cues; pass YT `chapters` when present)  
+4. Always same return shape so `/analyze` / `/quiz` stay provider-agnostic
+
+Optional later: use Transcript24 `sceneDetection` as chapter hints — **deferred** (cost).
 
 ### 2. Persist lesson cache (avoid re-fetch on quiz)
 
