@@ -3,6 +3,7 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import https from 'https';
 import http from 'http';
+import { assertPublicHttpUrl, UnsafeUrlError } from '../utils/assertPublicHttpUrl.js';
 
 class WebScrapingService {
   constructor() {
@@ -59,11 +60,7 @@ class WebScrapingService {
     let page = null;
 
     try {
-      // Validate URL
-      const urlObj = new URL(url);
-      if (!['http:', 'https:'].includes(urlObj.protocol)) {
-        throw new Error('Invalid URL protocol. Only HTTP and HTTPS are supported.');
-      }
+      await assertPublicHttpUrl(url);
 
       try {
         browser = await this.initBrowser();
@@ -95,14 +92,29 @@ class WebScrapingService {
         'Upgrade-Insecure-Requests': '1'
       });
 
-      // Block unnecessary resources to speed up loading
+      // Block unnecessary resources and non-public hosts (redirects / subrequests)
       await page.setRequestInterception(true);
-      page.on('request', (request) => {
-        const resourceType = request.resourceType();
-        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-          request.abort();
-        } else {
-          request.continue();
+      page.on('request', async (request) => {
+        try {
+          const reqUrl = request.url();
+          if (reqUrl.startsWith('http://') || reqUrl.startsWith('https://')) {
+            await assertPublicHttpUrl(reqUrl);
+          }
+
+          const resourceType = request.resourceType();
+          if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+            await request.abort();
+          } else {
+            await request.continue();
+          }
+        } catch {
+          try {
+            if (!request.isInterceptResolutionHandled()) {
+              await request.abort('blockedbyclient');
+            }
+          } catch {
+            // Ignore abort races if the request already finished
+          }
         }
       });
 
@@ -142,7 +154,11 @@ class WebScrapingService {
       };
 
     } catch (error) {
-      console.error('Web scraping error:', error);
+      if (error instanceof UnsafeUrlError) {
+        console.warn(`Blocked non-public scrape URL: ${error.message}`);
+      } else {
+        console.error('Web scraping error:', error);
+      }
 
       if (page) {
         try {
@@ -186,6 +202,17 @@ class WebScrapingService {
       };
 
     } catch (error) {
+      if (error instanceof UnsafeUrlError) {
+        return {
+          success: false,
+          url,
+          title: null,
+          content: null,
+          excerpt: null,
+          error: error.message
+        };
+      }
+
       console.error('Fallback scraping failed:', error);
       return {
         success: false,
@@ -199,8 +226,10 @@ class WebScrapingService {
   }
 
   async fetchHtmlContent(url, timeout) {
+    const { urlObj, addresses } = await assertPublicHttpUrl(url);
+    const pinned = addresses[0];
+
     return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
       const client = urlObj.protocol === 'https:' ? https : http;
 
       const options = {
@@ -208,6 +237,20 @@ class WebScrapingService {
         port: urlObj.port,
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
+        servername: urlObj.hostname,
+        family: pinned.family,
+        autoSelectFamily: false,
+        lookup: (_hostname, lookupOptions, callback) => {
+          if (typeof lookupOptions === 'function') {
+            callback = lookupOptions;
+            lookupOptions = {};
+          }
+          if (lookupOptions?.all) {
+            callback(null, [{ address: pinned.address, family: pinned.family }]);
+            return;
+          }
+          callback(null, pinned.address, pinned.family);
+        },
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
