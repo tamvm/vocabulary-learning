@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ArrowRight,
   ChevronLeft,
@@ -12,16 +12,17 @@ import VideoPlayer, { seekPlayer } from './VideoPlayer';
 import TranscriptPanel from './TranscriptPanel';
 import VocabPanel from './VocabPanel';
 import ChapterBar from './ChapterBar';
+import LessonSummary from './LessonSummary';
 
 function PanelShell({ title, children, className = '' }) {
   return (
     <div
-      className={`rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-3 flex flex-col ${className}`}
+      className={`rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-3 flex flex-col overflow-hidden min-h-0 ${className}`}
     >
-      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 px-1">
+      <h3 className="flex-shrink-0 text-sm font-semibold text-gray-900 dark:text-white mb-2 px-1">
         {title}
       </h3>
-      <div className="flex-1 min-h-0">{children}</div>
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -41,11 +42,7 @@ export default function StepStudy({
   const [currentTime, setCurrentTime] = useState(0);
   const [showVocab, setShowVocab] = useState(true);
   const [showTranscript, setShowTranscript] = useState(true);
-  const [showSummary, setShowSummary] = useState(Boolean(summary));
-
-  useEffect(() => {
-    if (summary) setShowSummary(true);
-  }, [summary]);
+  const [showSummary, setShowSummary] = useState(true);
 
   const handlePlayerReady = useCallback((player) => {
     playerRef.current = player;
@@ -67,7 +64,7 @@ export default function StepStudy({
   const transcriptPanel = showTranscript ? (
     <PanelShell
       title={`Transcript (${cues.length} lines)`}
-      className={sideBySide ? 'max-h-[70vh] min-h-[280px]' : 'max-h-[50vh] lg:max-h-[55vh]'}
+      className={sideBySide ? 'h-full min-h-0 flex-1' : 'h-[50vh]'}
     >
       <TranscriptPanel
         cues={cues}
@@ -81,7 +78,7 @@ export default function StepStudy({
   const vocabPanel = showVocab ? (
     <PanelShell
       title={`New words (${studyWords.length})`}
-      className="max-h-[50vh] lg:max-h-[55vh]"
+      className="h-[50vh]"
     >
       <VocabPanel
         words={studyWords}
@@ -150,27 +147,25 @@ export default function StepStudy({
               <EyeOff className="w-3 h-3 opacity-70" />
             )}
           </button>
-          {summary ? (
-            <button
-              type="button"
-              onClick={() => setShowSummary((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
-                showSummary
-                  ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'
-              }`}
-              title={showSummary ? 'Hide summary' : 'Show summary'}
-              aria-pressed={showSummary}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Summary
-              {showSummary ? (
-                <Eye className="w-3 h-3 opacity-70" />
-              ) : (
-                <EyeOff className="w-3 h-3 opacity-70" />
-              )}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => setShowSummary((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+              showSummary
+                ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
+                : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'
+            }`}
+            title={showSummary ? 'Hide summary' : 'Show summary'}
+            aria-pressed={showSummary}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            Summary
+            {showSummary ? (
+              <Eye className="w-3 h-3 opacity-70" />
+            ) : (
+              <EyeOff className="w-3 h-3 opacity-70" />
+            )}
+          </button>
         </div>
 
         <button
@@ -184,23 +179,15 @@ export default function StepStudy({
         </button>
       </div>
 
-      {summary && showSummary ? (
-        <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-gray-900 dark:text-white">
-            <BookOpen className="w-4 h-4 text-primary-500" />
-            Summary
-          </div>
-          <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 font-sans">
-            {summary}
-          </pre>
-        </div>
+      {showSummary ? (
+        <LessonSummary summary={summary} cues={cues} defaultOpen className="mb-4" />
       ) : null}
 
       {/* Stable first child keeps VideoPlayer mounted across layout toggles */}
       <div
         className={
           sideBySide
-            ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+            ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch'
             : 'flex flex-col gap-4'
         }
       >
@@ -216,7 +203,9 @@ export default function StepStudy({
         </div>
 
         {sideBySide ? (
-          transcriptPanel
+          <div className="min-h-0 h-[50vh] lg:h-auto lg:min-h-full flex flex-col">
+            {transcriptPanel}
+          </div>
         ) : showVocab || showTranscript ? (
           <div
             className={`grid gap-4 min-h-[320px] ${
