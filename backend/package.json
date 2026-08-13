@@ -8,7 +8,7 @@
     "dev": "nodemon --max-old-space-size=8192 src/server.js",
     "start": "node --max-old-space-size=8192 src/server.js",
     "build": "echo 'No build needed for Node.js backend'",
-    "test": "node test_quiz_fsrs.js && node test_assert_public_http_url.js && node test_postgrest_filter.js"
+    "test": "node test_quiz_fsrs.js && node test_assert_public_http_url.js && node test_postgrest_filter.js && node test_transcript24_cues.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

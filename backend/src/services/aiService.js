@@ -853,6 +853,200 @@ Provide only valid JSON array without additional text.`;
     }
   }
 
+  /**
+   * Summarize a video transcript and optionally produce chapters.
+   */
+  async summarizeAndChapter({
+    transcript,
+    durationSeconds = null,
+    existingChapters = null,
+    needChapters = true,
+  } = {}) {
+    if (!transcript || typeof transcript !== 'string') {
+      throw new Error('Transcript must be a non-empty string');
+    }
+
+    const maxChars = 14000;
+    const truncatedTranscript =
+      transcript.length > maxChars
+        ? transcript.substring(0, maxChars) + '\n[... transcript continues ...]'
+        : transcript;
+
+    const hasExisting =
+      Array.isArray(existingChapters) && existingChapters.length > 0;
+    const shouldChapter = needChapters && !hasExisting;
+
+    const chapterInstructions = shouldChapter
+      ? `Also split the video into 3–8 logical chapters.
+Each chapter: { "start": <seconds number>, "title": "<short title>" }
+- start must be approximate seconds from the beginning
+- cover the whole video in order; first chapter usually starts at 0`
+      : `Do NOT invent chapters. Return "chapters": [].`;
+
+    const prompt = `You are helping an English learner study a YouTube video.
+
+Duration (seconds): ${durationSeconds ?? 'unknown'}
+
+Create a concise study summary of the MAIN IDEAS (3–6 short bullet points as a single string with newlines, or a short paragraph + bullets).
+
+${chapterInstructions}
+
+Return ONLY valid JSON:
+{
+  "summary": "...",
+  "chapters": [ { "start": 0, "title": "Introduction" } ]
+}
+
+Transcript:
+"""
+${truncatedTranscript}
+"""`;
+
+    const response = await this.makeRequest('chat/completions', {
+      model: this.config.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 2000,
+    });
+
+    if (!response.choices?.[0]) {
+      throw new Error('No response from AI service for summary');
+    }
+
+    let content = response.choices[0].message.content;
+    content = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      console.error('Failed to parse summary response:', content);
+      throw new Error('Invalid AI response format for summary');
+    }
+
+    const summary =
+      typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+
+    let chapters = hasExisting
+      ? existingChapters.map((ch) => ({
+          start: Number(ch.start) || 0,
+          end: ch.end != null ? Number(ch.end) : null,
+          title: ch.title || 'Chapter',
+          source: ch.source || 'youtube',
+        }))
+      : [];
+
+    if (shouldChapter && Array.isArray(parsed.chapters)) {
+      chapters = parsed.chapters
+        .filter((ch) => ch && (ch.title || ch.start != null))
+        .map((ch) => ({
+          start: Number(ch.start) || 0,
+          end: ch.end != null ? Number(ch.end) : null,
+          title: String(ch.title || 'Chapter').trim(),
+          source: 'ai',
+        }))
+        .sort((a, b) => a.start - b.start);
+    }
+
+    return { summary, chapters };
+  }
+
+  /**
+   * Mixed video quiz: comprehension + vocab-in-context.
+   */
+  async generateVideoMixedQuiz({
+    transcript,
+    userCefrLevel = 'B2',
+    questionCount = 8,
+    vocabularyWords = [],
+  } = {}) {
+    const maxChars = 15000;
+    const truncatedContent =
+      transcript.length > maxChars
+        ? transcript.substring(0, maxChars) + '\n[... transcript continues ...]'
+        : transcript;
+
+    const vocabCount = Math.max(1, Math.floor(questionCount / 2));
+    const compCount = Math.max(1, questionCount - vocabCount);
+    const vocabList =
+      Array.isArray(vocabularyWords) && vocabularyWords.length
+        ? vocabularyWords.slice(0, 20).join(', ')
+        : '(no specific word list — pick useful words from the transcript)';
+
+    const prompt = `You are an English teacher creating a post-listening quiz.
+Student CEFR level: ${userCefrLevel}.
+
+Create exactly ${questionCount} multiple-choice questions from the video transcript:
+- ${compCount} of type "comprehension" — main ideas, details, sequence, speaker opinion (NOT dictionary definitions)
+- ${vocabCount} of type "vocab" — cloze or meaning-in-context for words from this list when possible: ${vocabList}
+
+Rules:
+- Each question: exactly 4 options, one correct
+- Include rough timestamp hint when possible
+- For vocab items set "targetWord"
+- English at ${userCefrLevel} level
+
+Return ONLY a JSON array:
+[
+  {
+    "type": "comprehension" | "vocab",
+    "question": "...",
+    "options": ["A", "B", "C", "D"],
+    "correctIndex": 0,
+    "timestamp": "approx 1:45",
+    "explanation": "...",
+    "targetWord": "optional-for-vocab"
+  }
+]
+
+Transcript:
+"""
+${truncatedContent}
+"""`;
+
+    const response = await this.makeRequest('chat/completions', {
+      model: this.config.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 4000,
+    });
+
+    if (!response.choices?.[0]) {
+      throw new Error('No response from AI service for video quiz');
+    }
+
+    let content_response = response.choices[0].message.content;
+    content_response = content_response
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
+
+    let questions;
+    try {
+      questions = JSON.parse(content_response);
+    } catch {
+      console.error('Failed to parse video quiz response:', content_response);
+      throw new Error('Invalid AI response format for quiz');
+    }
+
+    if (!Array.isArray(questions)) {
+      throw new Error('Quiz response is not an array');
+    }
+
+    return questions
+      .filter((q) => q.question && Array.isArray(q.options) && q.options.length === 4)
+      .map((q, idx) => ({
+        id: idx,
+        type: q.type === 'vocab' ? 'vocab' : 'comprehension',
+        question: q.question,
+        options: q.options,
+        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+        timestamp: q.timestamp || null,
+        explanation: q.explanation || '',
+        targetWord: q.targetWord || null,
+      }));
+  }
+
   generateId() {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }

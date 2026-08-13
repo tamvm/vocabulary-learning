@@ -228,8 +228,14 @@ export const youtubeAPI = {
   analyze: (videoUrl) =>
     api.post('/youtube/analyze', { videoUrl }),
 
-  generateQuiz: (videoUrl, vocabularyWordIds) =>
-    api.post('/youtube/quiz', { videoUrl, vocabularyWordIds }),
+  generateQuiz: (videoUrl, options = {}) =>
+    api.post('/youtube/quiz', {
+      videoUrl,
+      lessonId: options.lessonId,
+      vocabularyWordIds: options.vocabularyWordIds,
+      vocabularyWords: options.vocabularyWords,
+      questionCount: options.questionCount,
+    }),
 
   complete: (data) =>
     api.post('/youtube/complete', data),
