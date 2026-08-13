@@ -21,6 +21,7 @@ import { LEARN_STEPS as STEPS } from '@/lib/learnSession';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
+import LessonSummary from '@/components/Learn/LessonSummary';
 import toast from 'react-hot-toast';
 
 // ─── Step 2: Vocabulary Selection ─────────────────────────
@@ -28,6 +29,7 @@ function StepVocab({
   videoInfo,
   vocabulary,
   userCefrLevel,
+  summary,
   onLearn,
   onSkip,
   onToggleKnown,
@@ -120,6 +122,8 @@ function StepVocab({
           </div>
         </div>
       </div>
+
+      <LessonSummary summary={summary} defaultOpen className="mb-6" />
 
       {/* Stats bar */}
       <div className="flex items-center justify-between mb-4">
@@ -1036,6 +1040,7 @@ export default function Learn() {
             videoInfo={videoInfo}
             vocabulary={vocabulary}
             userCefrLevel={userCefrLevel}
+            summary={summary}
             onLearn={handleLearn}
             onSkip={handleSkipToStudy}
             onToggleKnown={handleToggleKnown}

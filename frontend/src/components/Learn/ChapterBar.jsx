@@ -1,4 +1,5 @@
 import React from 'react';
+import { findActiveChapterIndex } from '@/lib/transcriptSync';
 
 function formatTime(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -11,14 +12,14 @@ function formatTime(seconds) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-export default function ChapterBar({ chapters = [], onSeek, activeStart = null }) {
+export default function ChapterBar({ chapters = [], onSeek, currentTime = null }) {
   if (!chapters.length) return null;
+  const activeIndex = findActiveChapterIndex(chapters, currentTime);
 
   return (
     <div className="flex flex-wrap gap-2 mt-3">
       {chapters.map((ch, idx) => {
-        const isActive =
-          activeStart != null && Math.abs(Number(ch.start) - Number(activeStart)) < 0.5;
+        const isActive = idx === activeIndex;
         return (
           <button
             key={`${ch.start}-${idx}`}

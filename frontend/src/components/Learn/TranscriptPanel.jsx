@@ -1,15 +1,42 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { formatTime } from './ChapterBar';
+import { findActiveCueIndex } from '@/lib/transcriptSync';
 
 export default function TranscriptPanel({
   cues = [],
   onSeek,
   highlightWord = null,
-  activeStart = null,
+  currentTime = null,
 }) {
   const normalizedHighlight = highlightWord?.toLowerCase()?.trim() || null;
+  const listRef = useRef(null);
+  const activeRef = useRef(null);
 
   const items = useMemo(() => cues.filter((c) => c?.text), [cues]);
+  const activeIndex = useMemo(
+    () => findActiveCueIndex(items, currentTime),
+    [items, currentTime]
+  );
+
+  useEffect(() => {
+    const parent = listRef.current;
+    const el = activeRef.current;
+    if (!parent || !el || activeIndex < 0) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const visible =
+      elRect.top >= parentRect.top + 8 && elRect.bottom <= parentRect.bottom - 8;
+    if (visible) return;
+
+    const top =
+      el.getBoundingClientRect().top -
+      parent.getBoundingClientRect().top +
+      parent.scrollTop -
+      parent.clientHeight / 2 +
+      el.offsetHeight / 2;
+    parent.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }, [activeIndex]);
 
   if (!items.length) {
     return (
@@ -20,10 +47,9 @@ export default function TranscriptPanel({
   }
 
   return (
-    <div className="h-full overflow-y-auto pr-1 space-y-1">
+    <div ref={listRef} className="h-full overflow-y-auto pr-1 space-y-1">
       {items.map((cue, idx) => {
-        const isActive =
-          activeStart != null && Math.abs(Number(cue.start) - Number(activeStart)) < 0.35;
+        const isActive = idx === activeIndex;
         const hasWord =
           normalizedHighlight &&
           cue.text.toLowerCase().includes(normalizedHighlight);
@@ -31,6 +57,7 @@ export default function TranscriptPanel({
         return (
           <button
             key={`${cue.start}-${idx}`}
+            ref={isActive ? activeRef : undefined}
             type="button"
             onClick={() => onSeek?.(Number(cue.start) || 0)}
             className={`w-full text-left px-3 py-2 rounded-lg transition border ${
