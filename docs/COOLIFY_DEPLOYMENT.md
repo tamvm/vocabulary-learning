@@ -2,14 +2,12 @@
 
 Production deploy target for this repo is **Coolify** (Docker on Hetzner).
 
-**Coolify project id:** `ik6tx8h3y70t1zvuyqvb9et1`
+**Coolify project id:** `i8luqt7n49kugwqwfbcyrfvl` (`vocabulary-learning`)
 
-Repo Dockerfiles:
-
-| App | Dockerfile | Container port |
-|-----|------------|----------------|
-| Backend API | `backend/Dockerfile` | `3012` |
-| Frontend | `frontend/Dockerfile` | `3102` |
+| App | Coolify UUID | Dockerfile | Container port |
+|-----|--------------|------------|----------------|
+| Backend API | `yydjqewjghoex53en4o0je43` | `backend/Dockerfile` | `3012` (Coolify exposes `3112`) |
+| Frontend | `zsq5wwe7xltdrrlp5ldctr3g` | `frontend/Dockerfile` | `3102` |
 
 Official Coolify docs: [GitHub Auto Deploy](https://coolify.io/docs/applications/ci-cd/github/auto-deploy) (path may vary by Coolify version: Configuration → Advanced → Auto Deploy).
 
@@ -18,10 +16,10 @@ Official Coolify docs: [GitHub Auto Deploy](https://coolify.io/docs/applications
 ## 1. Open the Coolify project
 
 1. Log into your Coolify dashboard on the Hetzner VPS.
-2. Open project **`ik6tx8h3y70t1zvuyqvb9et1`** (or find it in Projects by that UUID).
+2. Open project **`i8luqt7n49kugwqwfbcyrfvl`** (`vocabulary-learning`), or find it in Projects by that UUID.
 3. Prefer **two applications** in that project (backend + frontend). One combined service is possible but harder to scale and env-separate.
 
-> If this project already hosts another app (e.g. link-management), add **new** applications for Magic English — do not overwrite the existing resource.
+> Do **not** use project `ik6tx8h3y70t1zvuyqvb9et1` — that UUID is **Link Management**, not Magic English.
 
 ---
 
@@ -88,50 +86,43 @@ Exact names must match `frontend` usage (`VITE_*`). Rebuild after changing build
 
 ---
 
-## 5. Enable Auto Deploy (push → deploy)
+## 5. Deploy on merge (GitHub Actions → Coolify API)
 
-For **each** application (backend and frontend):
+These apps are connected with a **deploy key**, not a GitHub App source. Coolify’s “Auto Deploy” checkbox alone does **not** receive GitHub push events unless a manual Git webhook is also configured.
 
-1. Open the app → **Configuration** → **Advanced** (or **Deployment & Git**).
-2. Enable **Auto Deploy**.
-3. Confirm branch is **`main`**.
-4. Optional: set **Watch Paths** so backend only rebuilds on `backend/**` and frontend on `frontend/**` (if your Coolify version supports watch paths).
+**Preferred path (configured in-repo):** [`.github/workflows/coolify-deploy.yml`](../.github/workflows/coolify-deploy.yml)
 
-With GitHub App + Auto Deploy, a push to `main` starts a deployment. You do **not** need a manual GitHub webhook URL.
+| Trigger | Behavior |
+|---------|----------|
+| PR merged / push → `main` or `master` | After workflow **CI** succeeds, deploy backend + frontend |
+| Actions → **Coolify Deploy** → Run workflow | Manual deploy (`both` / `backend` / `frontend`) |
+
+The job runs on the repo’s **self-hosted** runner (same Hetzner host as Coolify) and calls:
+
+`GET http://localhost:8000/api/v1/deploy?uuid=<app-uuid>&force=false`
+
+Auth:
+
+1. GitHub secret `COOLIFY_API_TOKEN` if set, else
+2. Runner file `~/.coolify/github-actions.token` (deploy-scoped Coolify API token)
+
+Optional when pointing `COOLIFY_BASE_URL` at a public hostname behind Cloudflare Access: secrets `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`.
 
 ### Verify
 
 ```bash
-# After merging / pushing to main:
-git push origin main
+# After merging to main (CI must be green first):
+gh run list --workflow "Coolify Deploy" --limit 5
+gh run watch   # optional
 ```
 
-Then in Coolify → **Deployments**: a new deployment for the pushed commit should appear.
-
-If nothing appears:
-
-- GitHub App still has access to the repo
-- Auto Deploy is on
-- Branch is `main`
-- You are looking at the correct application under project `ik6tx8h3y70t1zvuyqvb9et1`
+Then in Coolify → project **`i8luqt7n49kugwqwfbcyrfvl`** → **Deployments**.
 
 ---
 
-## 6. Optional: deploy webhook from GitHub Actions
+## 6. Optional: native Git webhooks
 
-Use only if you build images in CI and want Coolify to pull/redeploy on success:
-
-1. Coolify → API token with **deploy** permission.
-2. Copy the application **Deploy Webhook** URL.
-3. GitHub repo secrets: `COOLIFY_TOKEN`, `COOLIFY_WEBHOOK` (per app or shared carefully).
-4. After CI succeeds:
-
-```bash
-curl --request GET "$COOLIFY_WEBHOOK" \
-  --header "Authorization: Bearer $COOLIFY_TOKEN"
-```
-
-Native Auto Deploy (section 5) is enough for Dockerfile-from-Git deploys.
+If you later connect the apps via a Coolify **GitHub App** (or add Manual Git Webhooks for each app), you can rely on Coolify Auto Deploy instead of the Actions workflow. Until then, keep `coolify-deploy.yml`.
 
 ---
 
@@ -139,7 +130,7 @@ Native Auto Deploy (section 5) is enough for Dockerfile-from-Git deploys.
 
 After merge to `main`:
 
-1. Confirm Coolify deployment for project `ik6tx8h3y70t1zvuyqvb9et1` succeeds.
+1. Confirm CI is green, then Coolify Deploy run succeeds for project `i8luqt7n49kugwqwfbcyrfvl`.
 2. Smoke-test UI + auth in a browser.
 3. Do **not** change Coolify env/secrets during routine verify.
 4. Details: `.cursor/skills/ve-pr-workflow/SKILL.md`
@@ -150,7 +141,8 @@ After merge to `main`:
 
 | Symptom | Check |
 |---------|--------|
-| Push does nothing | Auto Deploy off; wrong branch; GitHub App permissions |
+| Merge does nothing | CI failed (deploy waits on CI); Coolify Deploy workflow missing on `main`; runner offline |
+| Deploy job auth error | Runner token at `~/.coolify/github-actions.token`, or secret `COOLIFY_API_TOKEN` |
 | Build fails on `npm` / missing lockfile | Dockerfiles use `npm install`; ensure `package.json` present in base dir |
 | Frontend calls wrong API | Rebuild frontend after fixing `VITE_API_URL` |
 | CORS errors | Backend `FRONTEND_URL` must match the real frontend origin |

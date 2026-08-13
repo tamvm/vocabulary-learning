@@ -12,9 +12,9 @@ Use this skill when starting a fix/feature, babysitting a PR, or when the user a
 
 CI: self-hosted GitHub Actions — `.github/workflows/ci.yml`  
 Runner setup: `docs/ci-self-hosted-runner.md`  
-Deploy: Coolify on Hetzner (Docker); project id `ik6tx8h3y70t1zvuyqvb9et1`  
+Deploy: Coolify on Hetzner (Docker); project id `i8luqt7n49kugwqwfbcyrfvl`  
 Setup guide: `docs/COOLIFY_DEPLOYMENT.md`  
-Push to `main` auto-deploys when Coolify Auto Deploy is enabled
+Merge/push to `main` or `master`: CI, then `.github/workflows/coolify-deploy.yml`
 
 ## 1. Start worktree
 
@@ -104,9 +104,9 @@ gh pr merge <N> --merge
 
 Use a merge commit (no squash) to match repo rules.
 
-Push to `main` should trigger Coolify auto-deploy (project `ik6tx8h3y70t1zvuyqvb9et1`). Then:
+Push/merge to `main` should run **CI** then **Coolify Deploy** (project `i8luqt7n49kugwqwfbcyrfvl`). Then:
 
-1. Watch Coolify Deployments for that project/apps. If stuck, Redeploy in Coolify UI (do not mutate env/secrets routinely).
+1. Watch `gh run list --workflow "Coolify Deploy"` and Coolify Deployments. If stuck, `gh workflow run coolify-deploy.yml` or Redeploy in Coolify UI (do not mutate env/secrets routinely).
 2. Smoke-test the app in a **browser** against the Coolify public URL(s). Do not rely on curl alone for UI regressions.
 3. Confirm auth still works (Supabase session) and learning flows load.
 4. Report deploy status and smoke-test result to the user.
