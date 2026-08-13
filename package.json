@@ -13,7 +13,7 @@
     "build:client": "cd frontend && npm run build",
     "start": "cd backend && npm start",
     "install:deps": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "test": "cd backend && npm test",
+    "test": "cd backend && npm test && cd ../frontend && node test_learn_session.js && node test_lesson_summary.js",
     "lint": "cd frontend && npm run lint",
     "reset-today": "./scripts/reset-today.sh",
     "reset-today:dry-run": "./scripts/reset-today.sh --dry-run",
