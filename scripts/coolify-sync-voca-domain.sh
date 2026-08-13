@@ -200,4 +200,15 @@ coolify GET "/api/v1/deploy?uuid=${BACKEND_UUID}&force=false" >/dev/null
 echo "  queued backend"
 coolify GET "/api/v1/deploy?uuid=${FRONTEND_UUID}&force=false" >/dev/null
 echo "  queued frontend"
+
+echo "Post-sync FQDNs:"
+for pair in "frontend:${FRONTEND_UUID}" "backend:${BACKEND_UUID}"; do
+  name="${pair%%:*}"
+  uuid="${pair##*:}"
+  app="$(coolify GET "/api/v1/applications/${uuid}")"
+  fqdn="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("fqdn") or "")' <<<"$app")"
+  echo "  ${name} ${uuid} fqdn=${fqdn}"
+done
+
 echo "Done. Frontend rebuild is required for VITE_* changes."
+echo "Expect https://voca.kenchange.com/api/* to reach the backend (401 without auth, not Cloudflare 502)."

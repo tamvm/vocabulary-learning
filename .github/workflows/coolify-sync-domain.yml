@@ -5,6 +5,10 @@ name: Coolify Sync Domain
 
 on:
   workflow_dispatch:
+  # One-shot: TOM-100 — remove this push trigger after /api 502 is fixed
+  push:
+    branches:
+      - cursor/tom-100-fix-api-502-fe41
 
 jobs:
   sync:
@@ -26,3 +30,26 @@ jobs:
         run: |
           chmod +x scripts/coolify-sync-voca-domain.sh
           scripts/coolify-sync-voca-domain.sh
+
+      - name: Smoke /api after sync
+        run: |
+          set -euo pipefail
+          echo "Waiting for Traefik/Coolify to apply domain routes..."
+          ok=0
+          for i in $(seq 1 30); do
+            code="$(curl -sS -o /tmp/voca-api-smoke.txt -w '%{http_code}' --max-time 15 \
+              https://voca.kenchange.com/api/profile || true)"
+            body="$(head -c 200 /tmp/voca-api-smoke.txt || true)"
+            echo "attempt $i: HTTP $code body=${body}"
+            # 401 = routing OK (auth required); 200 also OK; 502/503 = still broken
+            if [ "$code" = "401" ] || [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::https://voca.kenchange.com/api still not healthy after sync"
+            exit 1
+          fi
+          echo "API route smoke passed (HTTP $code)"
