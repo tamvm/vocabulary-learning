@@ -12,7 +12,9 @@ Use this skill when starting a fix/feature, babysitting a PR, or when the user a
 
 CI: self-hosted GitHub Actions — `.github/workflows/ci.yml`  
 Runner setup: `docs/ci-self-hosted-runner.md`  
-Deploy: Railway / Nixpacks (`railway.json`, `nixpacks.toml`)
+Deploy: Coolify on Hetzner (Docker); project id `ik6tx8h3y70t1zvuyqvb9et1`  
+Setup guide: `docs/COOLIFY_DEPLOYMENT.md`  
+Push to `main` auto-deploys when Coolify Auto Deploy is enabled
 
 ## 1. Start worktree
 
@@ -102,14 +104,14 @@ gh pr merge <N> --merge
 
 Use a merge commit (no squash) to match repo rules.
 
-Push to `main` should trigger Railway deploy when linked. Then:
+Push to `main` should trigger Coolify auto-deploy (project `ik6tx8h3y70t1zvuyqvb9et1`). Then:
 
-1. Confirm deploy status in Railway (do not mutate env/secrets routinely).
-2. Smoke-test the app in a **browser** when a public URL is configured. Do not rely on curl alone for UI regressions.
+1. Watch Coolify Deployments for that project/apps. If stuck, Redeploy in Coolify UI (do not mutate env/secrets routinely).
+2. Smoke-test the app in a **browser** against the Coolify public URL(s). Do not rely on curl alone for UI regressions.
 3. Confirm auth still works (Supabase session) and learning flows load.
 4. Report deploy status and smoke-test result to the user.
 
-Do not change Railway env vars or secrets during routine deploy.
+Do not change Coolify env vars or secrets during routine deploy.
 
 ## 5. Cleanup (required after merge)
 
@@ -132,4 +134,4 @@ If the worktree is dirty, stop and ask — do not force-remove silently.
 - Skip worktree cleanup after a successful merge
 - Force-push to `main` or skip hooks
 - Rely only on title automation without addressing review comments
-- Mutate Railway secrets as part of routine deploy
+- Mutate Coolify secrets as part of routine deploy
