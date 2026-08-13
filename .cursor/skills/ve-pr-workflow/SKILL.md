@@ -92,11 +92,15 @@ Loop until merge-ready:
 4. **Title** — When checks are green, **all review threads are fixed or replied-to**, and UI screenshots (if applicable) are in the PR body, ensure the PR title has a `[ready]` prefix
    - **On every new push:** immediately **remove** the `[ready]` prefix from the PR title. Only re-add `[ready]` after CI/local verification is green again and the babysit checklist above is satisfied.
 
-Do **not** merge until the user explicitly asks.
+Do **not** merge until the user explicitly asks. A merge ask still requires every review thread to be fixed or replied-to first.
 
 ## 4. Merge + verify deploy
 
-Only after the user says to merge:
+Only after the user says to merge.
+
+**Hard gate — fix reviews first.** An explicit merge ask does **not** skip this. Inventory unresolved GitHub review threads (human, Bugbot, Copilot, Kilo, Cursor Bugbot, etc.). For each: **fix** (push + reply) or **reply why not relevant**. Do not merge while any thread is unanswered. Never merge “and fix reviews later.”
+
+Then:
 
 ```bash
 gh pr merge <N> --merge
@@ -127,6 +131,7 @@ If the worktree is dirty, stop and ask — do not force-remove silently.
 ## Must not
 
 - Merge without an explicit user ask
+- Merge (even after an explicit user ask) while any review thread is unanswered — **fix or reply first, then merge**
 - Mark a UI-change PR `[ready]` without screenshots in the PR description
 - Mark `[ready]` or merge while any review thread is unanswered (must fix **or** reply why not relevant)
 - Ignore review feedback without a code fix or a GitHub reply on that thread

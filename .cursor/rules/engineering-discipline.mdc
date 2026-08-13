@@ -45,6 +45,7 @@ Raise scope concerns once; after the user picks expansion / hold / reduction, re
 - Push back with reasoning when a suggestion is wrong for Express + React/Vite + Supabase, or the PR worktree workflow.
 - Use `.cursorrules` severity: Critical / Warning / Ignore.
 - Do not reverse a decision already verified by tests or empirical check because an audit raises an abstract concern — reverse only with new evidence.
+- **Before merge:** every GitHub review thread must already be fixed or replied-to. A user “merge it” does not waive this — handle reviews, then merge.
 
 ## Explicitly not adopted from ClaudeKit
 

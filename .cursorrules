@@ -8,7 +8,7 @@ AI-powered vocabulary learning web app (Magic English). Multi-user, Supabase-bac
 - **AI**: Multiple providers (Ollama Cloud, OpenAI, local Ollama)
 - **CI**: Self-hosted GitHub Actions (`.github/workflows/ci.yml`) — see `docs/ci-self-hosted-runner.md`
 - **Deploy**: Coolify on Hetzner (Docker; project `i8luqt7n49kugwqwfbcyrfvl`) — see `docs/COOLIFY_DEPLOYMENT.md`; merge to `main`/`master` runs CI then `.github/workflows/coolify-deploy.yml`
-- **Production:** https://voca.kenchange.com (API `https://voca.kenchange.com/api`)
+- **Production:** https://voca.kenchange.com (API `https://voca-api.kenchange.com`)
   - Backend / frontend Dockerfiles under `backend/` and `frontend/`
   - Legacy Railway/Nixpacks files may still exist; Coolify is the production path
 
@@ -79,7 +79,7 @@ docs/                   # setup, CI runner, deploy notes
 - PR hygiene: only related commits — verify `git log --oneline origin/main..HEAD`
 - Branch hazard: always verify current branch before git ops
 - **PRs — always open / ready for review (never draft)** unless the user explicitly asks for a draft. `ManagePullRequest` `create_pr` must pass `draft: false`. Automation may create a draft — immediately `gh pr ready <N>` and verify `isDraft: false`
-- **PR reviews — fix or reply, never ignore:** every review comment/thread (human or bot) must be either fixed in code or answered on GitHub explaining why it is not relevant. Do not mark `[ready]` or merge with unanswered reviews.
+- **PR reviews — fix or reply before `[ready]` and before merge (hard gate):** every review comment/thread (human or bot: Bugbot, Copilot, Kilo, Cursor Bugbot, etc.) must be either fixed in code or answered on GitHub explaining why it is not relevant. Inventory unresolved threads first. Do not mark `[ready]` or merge with unanswered reviews — not even if the user already asked to merge. Handle reviews, then merge.
 - Production: Coolify project id `i8luqt7n49kugwqwfbcyrfvl` — after CI on `main`/`master`, `coolify-deploy.yml` queues backend + frontend
 - Do not change Coolify env/secrets as part of routine deploy
 

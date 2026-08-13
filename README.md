@@ -147,7 +147,7 @@ This will start:
 ### Production Deployment
 
 **Preferred:** Coolify (Docker) — project `i8luqt7n49kugwqwfbcyrfvl` (`vocabulary-learning`).  
-**Production:** [https://voca.kenchange.com](https://voca.kenchange.com) (API: `https://voca.kenchange.com/api`).  
+**Production:** [https://voca.kenchange.com](https://voca.kenchange.com) (API: `https://voca-api.kenchange.com`).  
 See **[Coolify Deployment Guide](docs/COOLIFY_DEPLOYMENT.md)** for GitHub App + Auto Deploy on `main`.
 
 | Service | Dockerfile | Port |
@@ -163,7 +163,7 @@ NODE_ENV=production
 FRONTEND_URL=https://voca.kenchange.com
 
 # Frontend
-VITE_API_URL=https://voca.kenchange.com/api
+VITE_API_URL=https://voca-api.kenchange.com/api
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 ```
 
