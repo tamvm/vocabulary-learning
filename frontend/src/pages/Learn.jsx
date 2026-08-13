@@ -28,6 +28,7 @@ function StepVocab({
   videoInfo,
   vocabulary,
   userCefrLevel,
+  summary = '',
   onLearn,
   onSkip,
   onToggleKnown,
@@ -248,6 +249,19 @@ function StepVocab({
           />
         </div>
       )}
+
+      {/* Summary before Study so learners can skim context first */}
+      {summary ? (
+        <div className="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+            <BookOpen className="w-4 h-4 text-primary-500" />
+            Video summary
+          </div>
+          <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 font-sans">
+            {summary}
+          </pre>
+        </div>
+      ) : null}
 
       {/* Action buttons */}
       <div className="flex items-center gap-3 mt-6">
@@ -1036,6 +1050,7 @@ export default function Learn() {
             videoInfo={videoInfo}
             vocabulary={vocabulary}
             userCefrLevel={userCefrLevel}
+            summary={summary}
             onLearn={handleLearn}
             onSkip={handleSkipToStudy}
             onToggleKnown={handleToggleKnown}

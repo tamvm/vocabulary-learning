@@ -1,15 +1,65 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { formatTime } from './ChapterBar';
+
+/**
+ * Find the cue that should be active at `currentTime`.
+ * Prefers [start, end); falls back to last cue with start <= t.
+ */
+export function findActiveCueIndex(cues, currentTime) {
+  if (!Array.isArray(cues) || !cues.length || currentTime == null) return -1;
+  const t = Number(currentTime);
+  if (Number.isNaN(t)) return -1;
+
+  let fallback = -1;
+  for (let i = 0; i < cues.length; i++) {
+    const start = Number(cues[i].start) || 0;
+    const endRaw = cues[i].end;
+    const end =
+      endRaw != null && !Number.isNaN(Number(endRaw))
+        ? Number(endRaw)
+        : i + 1 < cues.length
+        ? Number(cues[i + 1].start) || start + 3
+        : start + 8;
+
+    if (t >= start && t < end) return i;
+    if (t >= start) fallback = i;
+  }
+  return fallback;
+}
 
 export default function TranscriptPanel({
   cues = [],
   onSeek,
   highlightWord = null,
+  currentTime = null,
   activeStart = null,
 }) {
+  const listRef = useRef(null);
+  const activeRef = useRef(null);
+  const lastScrolledIdx = useRef(-1);
+
   const normalizedHighlight = highlightWord?.toLowerCase()?.trim() || null;
 
   const items = useMemo(() => cues.filter((c) => c?.text), [cues]);
+
+  const activeIndex = useMemo(() => {
+    if (currentTime != null) return findActiveCueIndex(items, currentTime);
+    if (activeStart != null) {
+      return items.findIndex(
+        (c) => Math.abs(Number(c.start) - Number(activeStart)) < 0.35
+      );
+    }
+    return -1;
+  }, [items, currentTime, activeStart]);
+
+  useEffect(() => {
+    if (activeIndex < 0 || activeIndex === lastScrolledIdx.current) return;
+    lastScrolledIdx.current = activeIndex;
+    const el = activeRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeIndex]);
 
   if (!items.length) {
     return (
@@ -20,10 +70,9 @@ export default function TranscriptPanel({
   }
 
   return (
-    <div className="h-full overflow-y-auto pr-1 space-y-1">
+    <div ref={listRef} className="h-full overflow-y-auto pr-1 space-y-1">
       {items.map((cue, idx) => {
-        const isActive =
-          activeStart != null && Math.abs(Number(cue.start) - Number(activeStart)) < 0.35;
+        const isActive = idx === activeIndex;
         const hasWord =
           normalizedHighlight &&
           cue.text.toLowerCase().includes(normalizedHighlight);
@@ -32,6 +81,7 @@ export default function TranscriptPanel({
           <button
             key={`${cue.start}-${idx}`}
             type="button"
+            ref={isActive ? activeRef : null}
             onClick={() => onSeek?.(Number(cue.start) || 0)}
             className={`w-full text-left px-3 py-2 rounded-lg transition border ${
               isActive
