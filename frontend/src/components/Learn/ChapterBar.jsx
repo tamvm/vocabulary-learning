@@ -11,14 +11,38 @@ function formatTime(seconds) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-export default function ChapterBar({ chapters = [], onSeek, activeStart = null }) {
+function findActiveChapterIndex(chapters, currentTime) {
+  if (!Array.isArray(chapters) || !chapters.length || currentTime == null) return -1;
+  const t = Number(currentTime);
+  if (Number.isNaN(t)) return -1;
+  let active = -1;
+  for (let i = 0; i < chapters.length; i++) {
+    const start = Number(chapters[i].start) || 0;
+    if (t >= start) active = i;
+    else break;
+  }
+  return active;
+}
+
+export default function ChapterBar({
+  chapters = [],
+  onSeek,
+  currentTime = null,
+  activeStart = null,
+}) {
   if (!chapters.length) return null;
+
+  const activeIdx =
+    currentTime != null
+      ? findActiveChapterIndex(chapters, currentTime)
+      : activeStart != null
+      ? findActiveChapterIndex(chapters, activeStart)
+      : -1;
 
   return (
     <div className="flex flex-wrap gap-2 mt-3">
       {chapters.map((ch, idx) => {
-        const isActive =
-          activeStart != null && Math.abs(Number(ch.start) - Number(activeStart)) < 0.5;
+        const isActive = idx === activeIdx;
         return (
           <button
             key={`${ch.start}-${idx}`}
