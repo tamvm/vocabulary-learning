@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
   Youtube,
@@ -19,6 +19,7 @@ import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
+import SessionHistory from '@/components/Learn/SessionHistory';
 import toast from 'react-hot-toast';
 
 // ─── Constants ────────────────────────────────────────────
@@ -29,8 +30,24 @@ const STEPS = {
   QUIZ: 4,
 };
 
+const STEP_FROM_KEY = {
+  vocab: STEPS.VOCAB,
+  study: STEPS.STUDY,
+  quiz: STEPS.QUIZ,
+  completed: STEPS.STUDY,
+};
+
 // ─── Step 1: YouTube URL Input ────────────────────────────
-function StepUrl({ onSubmit, loading, error }) {
+function StepUrl({
+  onSubmit,
+  loading,
+  error,
+  history,
+  historyLoading,
+  continueLesson,
+  resumeBusyId,
+  onResume,
+}) {
   const [url, setUrl] = useState('');
 
   const handleSubmit = (e) => {
@@ -72,7 +89,7 @@ function StepUrl({ onSubmit, loading, error }) {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.youtube.com/watch?v=..."
             className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
-            disabled={loading}
+            disabled={loading || !!resumeBusyId}
             autoFocus
           />
         </div>
@@ -85,7 +102,7 @@ function StepUrl({ onSubmit, loading, error }) {
 
         <button
           type="submit"
-          disabled={loading || !url.trim()}
+          disabled={loading || !!resumeBusyId || !url.trim()}
           className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
         >
           {loading ? (
@@ -109,6 +126,16 @@ function StepUrl({ onSubmit, loading, error }) {
             This may take 30-60 seconds for long videos...
           </div>
         </div>
+      )}
+
+      {!loading && (
+        <SessionHistory
+          lessons={history}
+          continueLesson={continueLesson}
+          loading={historyLoading}
+          busyId={resumeBusyId}
+          onContinue={onResume}
+        />
       )}
     </div>
   );
@@ -707,6 +734,40 @@ export default function Learn() {
   // Quiz results
   const [questions, setQuestions] = useState([]);
 
+  // Session history (cross-device)
+  const [history, setHistory] = useState([]);
+  const [continueLesson, setContinueLesson] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [resumeBusyId, setResumeBusyId] = useState(null);
+
+  const persistProgress = useCallback(async (id, data) => {
+    if (!id) return;
+    try {
+      await youtubeAPI.saveProgress(id, data);
+    } catch (err) {
+      console.warn('Could not save lesson progress:', err.message);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await youtubeAPI.getHistory(20);
+      setHistory(response.data.lessons || []);
+      setContinueLesson(response.data.continueLesson || null);
+    } catch (err) {
+      console.warn('Could not load lesson history:', err.message);
+      setHistory([]);
+      setContinueLesson(null);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
   // ── Step 1: Analyze ──────────────────────────────────
   const handleAnalyze = async (videoUrl) => {
     setLoading(true);
@@ -724,6 +785,8 @@ export default function Learn() {
       setCues(Array.isArray(data.cues) ? data.cues : []);
       setSummary(data.summary || '');
       setChapters(Array.isArray(data.chapters) ? data.chapters : []);
+      setStudyWords([]);
+      setQuestions([]);
       setStep(STEPS.VOCAB);
 
       if (data.totalFound === 0) {
@@ -737,6 +800,80 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Resume a previous session (desktop ↔ phone) ──────
+  const handleResume = async (lessonSummary) => {
+    if (!lessonSummary?.id) return;
+    setResumeBusyId(lessonSummary.id);
+    setError(null);
+    try {
+      const response = await youtubeAPI.getLesson(lessonSummary.id);
+      const lesson = response.data.lesson;
+      if (!lesson) throw new Error('Lesson not found');
+
+      setLessonId(lesson.id);
+      setCurrentVideoUrl(lesson.videoUrl || '');
+      setVideoInfo(lesson.videoInfo);
+      setVocabulary(lesson.vocabulary || []);
+      setUserCefrLevel(lesson.userCefrLevel || 'B2');
+      setCues(lesson.cues || []);
+      setSummary(lesson.summary || '');
+      setChapters(lesson.chapters || []);
+      setStudyWords(lesson.studyWords || []);
+      setQuestions(lesson.questions || []);
+
+      let targetStep = STEP_FROM_KEY[lesson.currentStep] || STEPS.VOCAB;
+
+      const needsQuizRegen =
+        targetStep === STEPS.QUIZ && !(lesson.questions?.length);
+
+      if (lesson.currentStep === 'completed') {
+        targetStep = (lesson.studyWords?.length || lesson.cues?.length)
+          ? STEPS.STUDY
+          : STEPS.VOCAB;
+      } else if (targetStep === STEPS.STUDY && !(lesson.studyWords?.length || lesson.cues?.length)) {
+        targetStep = STEPS.VOCAB;
+      } else if (targetStep === STEPS.VOCAB && !(lesson.vocabulary?.length)) {
+        toast('Re-analyzing this video to restore vocabulary…');
+        await handleAnalyze(lesson.videoUrl);
+        return;
+      }
+
+      setStep(targetStep);
+      toast.success(
+        lesson.currentStep === 'completed'
+          ? 'Opened previous session'
+          : `Continued at ${lesson.currentStep === 'quiz' ? 'Quiz' : lesson.currentStep === 'study' ? 'Study' : 'Vocabulary'}`
+      );
+
+      if (needsQuizRegen) {
+        setLoading(true);
+        try {
+          const vocabularyWords = (lesson.studyWords || []).map((w) => w.word).filter(Boolean);
+          const quizRes = await youtubeAPI.generateQuiz(lesson.videoUrl, {
+            lessonId: lesson.id,
+            vocabularyWords,
+          });
+          const nextQuestions = quizRes.data.questions || [];
+          setQuestions(nextQuestions);
+          if (!nextQuestions.length) {
+            toast.error('Could not restore quiz — opened Study instead');
+            setStep(STEPS.STUDY);
+          }
+        } catch (quizErr) {
+          toast.error('Could not restore quiz — opened Study instead');
+          setStep(STEPS.STUDY);
+        } finally {
+          setLoading(false);
+        }
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to continue session';
+      toast.error(msg);
+    } finally {
+      setResumeBusyId(null);
     }
   };
 
@@ -796,6 +933,12 @@ export default function Learn() {
 
       setStudyWords(wordsToLearn);
       setStep(STEPS.STUDY);
+      await persistProgress(lessonId, {
+        currentStep: 'study',
+        studyWords: wordsToLearn,
+        vocabulary,
+        wordsSaved: wordsToLearn.length,
+      });
     } catch (err) {
       toast.error('Failed to save words: ' + (err.response?.data?.message || err.message));
     } finally {
@@ -804,15 +947,21 @@ export default function Learn() {
   };
 
   // ── Step 2→Study without saving ──────────────────────
-  const handleSkipToStudy = () => {
+  const handleSkipToStudy = async () => {
     const words = vocabulary.filter((v) => !v.isKnown);
     setStudyWords(words);
     setStep(STEPS.STUDY);
+    await persistProgress(lessonId, {
+      currentStep: 'study',
+      studyWords: words,
+      vocabulary,
+    });
   };
 
   // ── Study → Quiz ─────────────────────────────────────
   const handleContinueToQuiz = async () => {
     setStep(STEPS.QUIZ);
+    await persistProgress(lessonId, { currentStep: 'quiz', studyWords });
     await handleGenerateQuiz();
   };
 
@@ -825,9 +974,15 @@ export default function Learn() {
         lessonId,
         vocabularyWords,
       });
-      setQuestions(response.data.questions || []);
-      if (!response.data.questions?.length) {
+      const nextQuestions = response.data.questions || [];
+      setQuestions(nextQuestions);
+      if (!nextQuestions.length) {
         toast.error('Could not generate quiz questions. Try a different video.');
+      } else {
+        await persistProgress(lessonId, {
+          currentStep: 'quiz',
+          quizQuestions: nextQuestions,
+        });
       }
     } catch (err) {
       toast.error('Failed to generate quiz: ' + (err.response?.data?.message || err.message));
@@ -846,6 +1001,7 @@ export default function Learn() {
         quizScore: score,
         quizTotal: total,
       });
+      await loadHistory();
     } catch (err) {
       console.error('Failed to save quiz result:', err);
     }
@@ -864,6 +1020,7 @@ export default function Learn() {
     setSummary('');
     setChapters([]);
     setStudyWords([]);
+    loadHistory();
   };
 
   // ── Step indicator ───────────────────────────────────
@@ -920,7 +1077,16 @@ export default function Learn() {
 
         {/* Step content */}
         {step === STEPS.URL && (
-          <StepUrl onSubmit={handleAnalyze} loading={loading} error={error} />
+          <StepUrl
+            onSubmit={handleAnalyze}
+            loading={loading}
+            error={error}
+            history={history}
+            historyLoading={historyLoading}
+            continueLesson={continueLesson}
+            resumeBusyId={resumeBusyId}
+            onResume={handleResume}
+          />
         )}
 
         {step === STEPS.VOCAB && (

@@ -243,8 +243,14 @@ export const youtubeAPI = {
   markKnown: (word, known) =>
     api.post('/youtube/mark-known', { word, known }),
 
-  getHistory: () =>
-    api.get('/youtube/history'),
+  getHistory: (limit = 20) =>
+    api.get('/youtube/history', { params: { limit } }),
+
+  getLesson: (id) =>
+    api.get(`/youtube/lessons/${id}`),
+
+  saveProgress: (id, data) =>
+    api.patch(`/youtube/lessons/${id}/progress`, data),
 }
 
 export default api
