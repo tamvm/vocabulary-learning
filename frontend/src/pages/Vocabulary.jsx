@@ -842,10 +842,10 @@ const Vocabulary = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
               Vocabulary
             </h1>
-            <p className="mt-2 text-gray-600 dark:text-gray-400">
+            <p className="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400">
               Manage your vocabulary collection
             </p>
           </div>
@@ -930,20 +930,20 @@ const Vocabulary = () => {
             </div>
             <div className="card-body space-y-4">
               {/* Mode Selection */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                 <button
                   onClick={() => {
                     setContentAnalysisMode('url')
                     setContentText('')
                     setSelectedFile(null)
                   }}
-                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all text-sm sm:text-base ${
                     contentAnalysisMode === 'url'
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
-                  <Link className="h-4 w-4 mr-2" />
+                  <Link className="h-4 w-4 mr-2 flex-shrink-0" />
                   From URL
                 </button>
                 <button
@@ -952,13 +952,13 @@ const Vocabulary = () => {
                     setContentUrl('')
                     setSelectedFile(null)
                   }}
-                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all text-sm sm:text-base ${
                     contentAnalysisMode === 'text'
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
-                  <Type className="h-4 w-4 mr-2" />
+                  <Type className="h-4 w-4 mr-2 flex-shrink-0" />
                   From Text
                 </button>
                 <button
@@ -967,13 +967,13 @@ const Vocabulary = () => {
                     setContentUrl('')
                     setContentText('')
                   }}
-                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                  className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all text-sm sm:text-base ${
                     contentAnalysisMode === 'file'
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
-                  <FileText className="h-4 w-4 mr-2" />
+                  <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
                   From File
                 </button>
               </div>
@@ -1655,7 +1655,7 @@ const Vocabulary = () => {
                           <tr key={word.id} className="bg-yellow-50 dark:bg-yellow-900/20">
                             <td className="table-cell" colSpan="9">
                               <div className="space-y-4 p-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                       Word *
@@ -1682,7 +1682,7 @@ const Vocabulary = () => {
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                       Word Type
