@@ -314,8 +314,11 @@ export default function StepStudy({
         </div>
 
         {sideBySide ? (
-          <div className="min-h-0 h-[50vh] lg:h-auto lg:min-h-full flex flex-col">
-            {transcriptPanel}
+          // Absolute fill on lg so transcript matches video height and scrolls
+          <div className="min-h-0 h-[50vh] lg:h-auto lg:relative lg:self-stretch flex flex-col">
+            <div className="flex flex-col min-h-0 h-full lg:absolute lg:inset-0">
+              {transcriptPanel}
+            </div>
           </div>
         ) : showVocab || showTranscript ? (
           <div
