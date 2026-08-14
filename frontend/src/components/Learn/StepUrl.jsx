@@ -335,8 +335,6 @@ export default function StepUrl({
         </div>
       )}
 
-      )}
-
       <div className="mt-10">
         <div className="flex items-center gap-2 mb-3">
           <RotateCcw className="w-4 h-4 text-gray-400" />
