@@ -1,9 +1,9 @@
 /**
- * Unit tests for Study summary fallback (TOM-105 follow-up).
+ * Unit tests for Study summary display (TOM-107).
  * Run: node test_lesson_summary.js
  */
 
-import { displaySummary } from './src/lib/lessonSummary.js';
+import { displaySummary, looksLikeTranscriptDump } from './src/lib/lessonSummary.js';
 
 let failed = 0;
 
@@ -18,27 +18,26 @@ function assertEqual(actual, expected, message) {
   console.log(`PASS: ${message}`);
 }
 
-const ai = displaySummary('  Main ideas here.  ', [{ text: 'ignored' }]);
+const ai = displaySummary('  - Main idea one.\n- Main idea two.  ');
 assertEqual(ai.source, 'ai', 'prefers AI summary');
-assertEqual(ai.text, 'Main ideas here.', 'trims AI summary');
+assertEqual(ai.items.length, 2, 'parses two bullets');
+assertEqual(ai.items[0], 'Main idea one.', 'strips dash');
 
 const empty = displaySummary('', []);
-assertEqual(empty.source, 'empty', 'empty when no summary or cues');
+assertEqual(empty.source, 'empty', 'empty when no summary');
 assertEqual(empty.text, '', 'empty text');
 
-const excerpt = displaySummary('', [
-  { text: 'Hello' },
-  { text: ' world ' },
-  { text: '' },
-]);
-assertEqual(excerpt.source, 'excerpt', 'falls back to cues');
-assertEqual(excerpt.text, 'Hello world', 'joins cue text');
+const dump = displaySummary(
+  'Elon Musk, thank you so much for joining me. >> I just like building things. >> You run a…'
+);
+assertEqual(dump.source, 'empty', 'rejects caption dump');
+assertEqual(dump.text, '', 'dump has no text');
 
-const long = 'word '.repeat(200).trim();
-const clipped = displaySummary('', [{ text: long }]);
-assertEqual(clipped.source, 'excerpt', 'long excerpt still excerpt');
-assertEqual(clipped.text.endsWith('…'), true, 'clips long excerpt');
-assertEqual(clipped.text.length <= 501, true, 'clip stays near 500 chars');
+assertEqual(
+  looksLikeTranscriptDump('A clear takeaway about Optimus robots.'),
+  false,
+  'real highlight is not a dump'
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
