@@ -60,6 +60,7 @@ AI_PROVIDER=opencode
 AI_API_KEY=...                 # OpenCode Go key (OPENCODE_API_KEY also accepted)
 AI_MODEL=mimo-v2.5
 # AI_PROVIDER=opencode-go is accepted as an alias for the same endpoint
+# AI_PROVIDER=opencode/go is also accepted (same as opencode-go)
 
 JWT_SECRET=...   # strong random value
 

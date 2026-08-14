@@ -8,6 +8,7 @@ import {
   configurationError,
   createPublicAiError,
   publicAiFailure,
+  resolveAiProvider,
 } from './src/services/aiConfig.js';
 
 function assert(cond, msg) {
@@ -69,5 +70,8 @@ const err = createPublicAiError(new Error('API key is required'));
 assert(err.expose === true, 'expose');
 assert(err.statusCode === 503, '503');
 assert(err.message === AI_NOT_CONFIGURED_MESSAGE, 'public message');
+
+assert(resolveAiProvider('opencode/go') === 'opencode-go', 'opencode/go alias');
+assert(resolveAiProvider('opencode') === 'opencode', 'opencode unchanged');
 
 console.log('test_ai_config: OK');

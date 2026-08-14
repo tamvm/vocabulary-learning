@@ -108,12 +108,15 @@ export function assertExpectedModel(actual, expected) {
   return { ok: true };
 }
 
+const OPENCODE_PROVIDERS = new Set(['opencode', 'opencode-go']);
+
 export function assertExpectedProvider(actual, expected) {
   if (!expected) return { ok: true };
   const got = String(actual || '').trim();
   const want = String(expected).trim();
-  if (got !== want && !(want === 'opencode' && got === 'opencode-go') && !(want === 'opencode-go' && got === 'opencode')) {
-    return { ok: false, reason: `provider is "${got}", expected "${want}"` };
-  }
-  return { ok: true };
+  const gotNorm = got === 'opencode/go' || got === 'opencode_go' ? 'opencode-go' : got;
+  const wantNorm = want === 'opencode/go' || want === 'opencode_go' ? 'opencode-go' : want;
+  if (gotNorm === wantNorm) return { ok: true };
+  if (OPENCODE_PROVIDERS.has(gotNorm) && OPENCODE_PROVIDERS.has(wantNorm)) return { ok: true };
+  return { ok: false, reason: `provider is "${got}", expected "${want}"` };
 }

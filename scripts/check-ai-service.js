@@ -291,7 +291,7 @@ async function runDirect(options) {
         model: aiService.config.model,
         messages: [{ role: 'user', content: 'Reply with exactly the single word: pong' }],
         temperature: 0,
-        max_tokens: 16,
+        max_tokens: 256,
       },
       { timeout: 60000 }
     );

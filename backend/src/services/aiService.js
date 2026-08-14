@@ -8,8 +8,14 @@ import {
 import {
   configurationError,
   createPublicAiError,
+  resolveAiProvider,
 } from './aiConfig.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
+import {
+  requireChatMessageText,
+  stripJsonFences,
+  withThinkingDisabled,
+} from './chatMessageText.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
@@ -85,9 +91,10 @@ class AIService {
       },
     };
 
-    const providerName = String(
-      process.env.AI_PROVIDER || 'openai'
-    ).trim();
+    const providerName = resolveAiProvider(
+      process.env.AI_PROVIDER
+        || (String(process.env.OPENCODE_API_KEY || '').trim() ? 'opencode' : 'openai')
+    );
     const providerDefaults = this.providers[providerName] || {};
     const configuredModel = String(
       process.env.AI_MODEL || providerDefaults.defaultModel || 'gpt-4o-mini'
@@ -183,7 +190,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
           },
         ],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 2000,
       }, { timeout: 60000 });
 
       if (response.choices && response.choices[0]) {
@@ -768,6 +775,7 @@ Provide only valid JSON without additional text.`;
       throw new Error(`Unknown AI provider: ${this.config.provider}`);
     }
 
+    const payload = withThinkingDisabled(data);
     const url = `${provider.baseUrl}/${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
@@ -792,7 +800,7 @@ Provide only valid JSON without additional text.`;
     const response = await this.httpRequest(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
       timeout,
     });
 
