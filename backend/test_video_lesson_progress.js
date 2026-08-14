@@ -154,6 +154,12 @@ assertDeepEqual(
   'pickProgressFields only copies provided keys'
 );
 
+assertEqual(
+  pickProgressFields({ title: '  Renamed lesson  ' }, now).title,
+  'Renamed lesson',
+  'pickProgressFields trims title'
+);
+
 assert(
   !('vocabulary_snapshot' in pickProgressFields({ currentStep: 2 }, now)),
   'omitted snapshot fields are not wiped'
@@ -189,8 +195,8 @@ assertEqual(
 );
 assertEqual(
   pickLessonToReuse([done], { videoId: 'abcdefghijk' }),
-  null,
-  'does not reuse completed lesson for a new extract'
+  'done',
+  'reuses completed lesson so the same video can be revisited'
 );
 assertEqual(
   pickLessonToReuse([done], { lessonId: 'done', videoId: 'abcdefghijk' }),

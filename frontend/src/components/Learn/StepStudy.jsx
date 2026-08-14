@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
   ArrowRight,
-  ChevronLeft,
+  List,
   BookOpen,
   PanelLeft,
   Subtitles,
@@ -299,10 +299,11 @@ export default function StepStudy({
         <button
           type="button"
           onClick={onBack}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-          title="Back to vocabulary"
+          className="flex items-center gap-1.5 px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition text-sm font-medium text-gray-600 dark:text-gray-300"
+          title="All videos"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <List className="w-5 h-5" />
+          <span>All videos</span>
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-gray-900 dark:text-white truncate">

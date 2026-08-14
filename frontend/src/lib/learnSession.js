@@ -24,6 +24,15 @@ export function reuseUnfinishedLessonId(lessons, videoId) {
   return match?.id || null;
 }
 
+/** Newest saved lesson for this YouTube id, including completed (revisit). */
+export function reuseSavedLessonId(lessons, videoId) {
+  if (!videoId) return null;
+  const unfinishedId = reuseUnfinishedLessonId(lessons, videoId);
+  if (unfinishedId) return unfinishedId;
+  const match = (lessons || []).find((lesson) => lesson.video_id === videoId);
+  return match?.id || null;
+}
+
 export function lessonNeedsReanalyze(data) {
   const hasVocab = Array.isArray(data?.vocabulary) && data.vocabulary.length > 0;
   const hasStudy = Array.isArray(data?.studyWords) && data.studyWords.length > 0;

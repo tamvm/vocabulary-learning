@@ -7,6 +7,9 @@ import {
   RotateCcw,
   BookOpen,
   Trash2,
+  Pencil,
+  RefreshCw,
+  Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatRelativeTime } from '@/lib/utils';
@@ -21,83 +24,139 @@ import {
 
 function SessionRow({
   lesson,
-  onContinue,
-  onReview,
+  onOpen,
   onRetake,
   onDelete,
+  onRename,
+  onReextract,
   resumeLoadingId,
   deletingId,
+  renamingId,
 }) {
   const thumb = lessonThumbnail(lesson);
   const tone = statusTone(lesson);
   const unfinished = isUnfinishedLesson(lesson);
   const score = lessonScoreLabel(lesson);
-  const busy = resumeLoadingId === lesson.id || deletingId === lesson.id;
+  const busy =
+    resumeLoadingId === lesson.id ||
+    deletingId === lesson.id ||
+    renamingId === lesson.id;
+  const [editing, setEditing] = React.useState(false);
+  const [titleDraft, setTitleDraft] = React.useState(lesson.title || '');
+
+  React.useEffect(() => {
+    setTitleDraft(lesson.title || '');
+  }, [lesson.title]);
+
+  const saveTitle = () => {
+    const next = titleDraft.trim();
+    if (!next || next === (lesson.title || '')) {
+      setEditing(false);
+      setTitleDraft(lesson.title || '');
+      return;
+    }
+    onRename(lesson.id, next);
+    setEditing(false);
+  };
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       <div className="flex items-center gap-3 min-w-0 flex-1">
-      {thumb ? (
-        <img
-          src={thumb}
-          alt=""
-          className="w-20 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-100 dark:bg-gray-700"
-        />
-      ) : (
-        <div className="w-20 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-          <Youtube className="w-5 h-5 text-red-400" />
+        {thumb ? (
+          <img
+            src={thumb}
+            alt=""
+            className="w-20 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-100 dark:bg-gray-700"
+          />
+        ) : (
+          <div className="w-20 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+            <Youtube className="w-5 h-5 text-red-400" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveTitle();
+                }
+                if (e.key === 'Escape') {
+                  setEditing(false);
+                  setTitleDraft(lesson.title || '');
+                }
+              }}
+              className="w-full px-2 py-1 text-sm rounded border border-primary-400 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              aria-label="Video title"
+            />
+          ) : (
+            <p className="font-medium text-gray-900 dark:text-white truncate">
+              {lesson.title || 'YouTube lesson'}
+            </p>
+          )}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span className={`px-1.5 py-0.5 rounded font-medium ${tone.className}`}>
+              {tone.label}
+            </span>
+            <span>{stepLabel(lesson)}</span>
+            {score && <span>Score {score}</span>}
+            <span>{formatRelativeTime(lesson.updated_at || lesson.created_at)}</span>
+          </div>
         </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900 dark:text-white truncate">
-          {lesson.title || 'YouTube lesson'}
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className={`px-1.5 py-0.5 rounded font-medium ${tone.className}`}>
-            {tone.label}
-          </span>
-          <span>{stepLabel(lesson)}</span>
-          {score && <span>Score {score}</span>}
-          <span>{formatRelativeTime(lesson.updated_at || lesson.created_at)}</span>
-        </div>
-      </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
-        {unfinished ? (
+        <button
+          type="button"
+          onClick={() => onOpen(lesson.id)}
+          disabled={busy}
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white transition"
+        >
+          {busy ? 'Opening…' : unfinished ? 'Continue' : 'Open'}
+        </button>
+        {!unfinished && (
           <button
             type="button"
-            onClick={() => onContinue(lesson.id)}
+            onClick={() => onRetake(lesson.id)}
             disabled={busy}
-            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white transition"
+            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
           >
-            {busy ? 'Opening…' : 'Continue'}
+            Quiz
           </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => onReview(lesson.id)}
-              disabled={busy}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
-            >
-              Review
-            </button>
-            <button
-              type="button"
-              onClick={() => onRetake(lesson.id)}
-              disabled={busy}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white transition"
-            >
-              Retake
-            </button>
-          </>
         )}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={busy}
+          aria-label="Rename video"
+          title="Rename"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 disabled:opacity-50 transition"
+        >
+          {renamingId === lesson.id ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Pencil className="w-4 h-4" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => onReextract(lesson)}
+          disabled={busy}
+          aria-label="Re-extract video"
+          title="Re-extract vocabulary"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 disabled:opacity-50 transition"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
         <button
           type="button"
           onClick={() => onDelete(lesson.id)}
           disabled={busy}
-          aria-label="Remove session"
-          title="Remove session"
+          aria-label="Remove video"
+          title="Remove video"
           className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 transition"
         >
           {deletingId === lesson.id ? (
@@ -119,15 +178,26 @@ export default function StepUrl({
   historyLoading,
   resumeLoadingId,
   onContinue,
-  onReview,
   onRetake,
   onDelete,
   onClearAll,
+  onRename,
+  onReextract,
   deletingId,
+  renamingId,
 }) {
   const [url, setUrl] = React.useState('');
+  const [query, setQuery] = React.useState('');
   const unfinished = latestUnfinished(history);
-  const remaining = (history || []).filter((lesson) => lesson.id !== unfinished?.id);
+  const needle = query.trim().toLowerCase();
+  const filtered = (history || []).filter((lesson) => {
+    if (!needle) return true;
+    const hay = `${lesson.title || ''} ${lesson.video_id || ''} ${lesson.video_url || ''}`.toLowerCase();
+    return hay.includes(needle);
+  });
+  const remaining = needle
+    ? filtered
+    : filtered.filter((lesson) => lesson.id !== unfinished?.id);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -152,11 +222,62 @@ export default function StepUrl({
           Learn from YouTube
         </h1>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Paste a YouTube video URL to extract vocabulary and test your listening comprehension
+          Start a new video, or reopen one you already saved
         </p>
       </div>
 
-      {unfinished && (
+      <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+        <div>
+          <label htmlFor="videoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            {(history || []).length ? 'Start another video' : 'YouTube Video URL'}
+          </label>
+          <input
+            id="videoUrl"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
+            disabled={loading}
+            autoFocus
+          />
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading || !url.trim() || historyLoading}
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Extracting transcript...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5" />
+              {(history || []).length ? 'Start this video' : 'Extract Vocabulary'}
+            </>
+          )}
+        </button>
+      </form>
+
+      {loading && (
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            This may take 30-60 seconds for long videos...
+          </div>
+        </div>
+      )}
+
+      {!needle && unfinished && (
         <div className="mb-6 p-4 rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20">
           <div className="flex flex-col sm:flex-row sm:items-start gap-3">
             {lessonThumbnail(unfinished) ? (
@@ -199,8 +320,8 @@ export default function StepUrl({
                 type="button"
                 onClick={() => onDelete(unfinished.id)}
                 disabled={Boolean(resumeLoadingId) || loading || Boolean(deletingId)}
-                aria-label="Remove session"
-                title="Remove session"
+                aria-label="Remove video"
+                title="Remove video"
                 className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 transition"
               >
                 {deletingId === unfinished.id ? (
@@ -214,62 +335,11 @@ export default function StepUrl({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="videoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            YouTube Video URL
-          </label>
-          <input
-            id="videoUrl"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
-            disabled={loading}
-            autoFocus
-          />
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading || !url.trim()}
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Extracting transcript...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5" />
-              Extract Vocabulary
-            </>
-          )}
-        </button>
-      </form>
-
-      {loading && (
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            This may take 30-60 seconds for long videos...
-          </div>
-        </div>
-      )}
-
       <div className="mt-10">
         <div className="flex items-center gap-2 mb-3">
           <RotateCcw className="w-4 h-4 text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-            Recent sessions
+            Your videos
           </h2>
           {!historyLoading && (history || []).length > 0 && (
             <button
@@ -282,6 +352,19 @@ export default function StepUrl({
             </button>
           )}
         </div>
+
+        {!historyLoading && (history || []).length > 0 && (
+          <div className="relative mb-3">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search saved videos"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+          </div>
+        )}
 
         {historyLoading && (
           <div className="space-y-2">
@@ -296,7 +379,13 @@ export default function StepUrl({
 
         {!historyLoading && remaining.length === 0 && !unfinished && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No previous sessions yet. Extract a video to start one — it will sync across your devices.
+            No saved videos yet. Extract one to keep it here — you can reopen it anytime.
+          </p>
+        )}
+
+        {!historyLoading && remaining.length === 0 && needle && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No videos match “{query.trim()}”.
           </p>
         )}
 
@@ -306,12 +395,14 @@ export default function StepUrl({
               <SessionRow
                 key={lesson.id}
                 lesson={lesson}
-                onContinue={onContinue}
-                onReview={onReview}
+                onOpen={onContinue}
                 onRetake={onRetake}
                 onDelete={onDelete}
+                onRename={onRename}
+                onReextract={onReextract}
                 resumeLoadingId={resumeLoadingId}
                 deletingId={deletingId}
+                renamingId={renamingId}
               />
             ))}
           </div>
