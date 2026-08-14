@@ -72,6 +72,18 @@ RATE_LIMIT_MAX=1000
 
 4. Deploy once manually; confirm `/` or a health/API route responds on the public URL.
 
+5. Confirm AI env on the **running** backend (not only that the vars exist in the Coolify UI):
+
+```bash
+# Live API (Coolify process env). Copy the Bearer token from DevTools after login.
+VOCA_ACCESS_TOKEN='…' npm run test:ai -- --remote --expect-provider opencode --expect-model mimo-v2.5
+
+# Same keys locally or `docker exec` in the backend container:
+AI_PROVIDER=opencode AI_API_KEY='…' AI_MODEL=mimo-v2.5 npm run test:ai -- --direct --expect-model mimo-v2.5
+```
+
+`analyze-word` can succeed via Free Dictionary when the LLM is down; the remote probe **fails** if that fallback is used. Direct mode sends a tiny `chat/completions` ping.
+
 ---
 
 ## 4. Create the frontend application
