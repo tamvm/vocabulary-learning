@@ -50,7 +50,7 @@ const Scoring = () => {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             Sentence Scoring
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">

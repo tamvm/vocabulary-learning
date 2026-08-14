@@ -1126,6 +1126,7 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setResumeLoadingId(null);
+      setLoading(false);
     }
   }, [analyzeVideo, applyHydratedLesson, generateQuiz, loadHistory, persistProgress, setSearchParams]);
 
@@ -1429,9 +1430,21 @@ export default function Learn() {
         <title>Learn from YouTube — Magic English</title>
       </Helmet>
 
-      <div className="py-6 px-4 sm:px-6 lg:px-8">
+      <div className="pb-2">
+        {(step !== STEPS.URL || searchParams.get('lesson')) && (
+          <div className="max-w-3xl mx-auto mb-4">
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              All videos
+            </button>
+          </div>
+        )}
         {/* Step indicator */}
-        <div className="max-w-3xl mx-auto mb-8">
+        <div className="max-w-3xl mx-auto mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>
