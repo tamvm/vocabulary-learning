@@ -10,22 +10,17 @@ import {
   pickProgressFields,
 } from '../services/videoLessonProgress.js';
 import {
-  sampleTranscriptForAnalysis,
-  capCues,
-  withTimeout,
-  HIGHLIGHTS_ROUTE_TIMEOUT_MS,
-  HIGHLIGHTS_FIRST_PASS_MS,
-  HIGHLIGHTS_RETRY_PASS_MS,
-} from '../services/youtubeAnalyzeHelpers.js';
-import { publicAiFailure, createPublicAiError } from '../services/aiConfig.js';
-const router = express.Router();
+  enqueueLessonPrepare,
+  patchLessonPrepare,
+  resolvePrepareStatus,
+  resolveSummaryStatus,
+  buildPrepareJobView,
+  PREPARE_STATUS,
+  PREPARE_STEPS,
+  SUMMARY_STATUS,
+} from '../services/lessonPrepareJob.js';
 
-const CHAPTER_MIN_DURATION_SEC = 8 * 60; // AI chapters if no YT chapters and long enough
-/** Keep analyze under Cloudflare/cloudflared ~100s proxy budget */
-const ANALYZE_VOCAB_SAMPLE_CHARS = 5000; // <= aiService chunk size → single AI call
-const ANALYZE_SUMMARY_SAMPLE_CHARS = 12000;
-const ANALYZE_VOCAB_CHUNKS = 1;
-const ANALYZE_MAX_CUES = 2500;
+const router = express.Router();
 
 const analyzeSchema = Joi.object({
   videoUrl: Joi.string().uri().required(),
@@ -67,7 +62,7 @@ async function loadCachedTranscript(supabase, userId, lessonId, videoUrl) {
   if (lessonId) {
     const { data } = await supabase
       .from('video_lessons')
-      .select('id, video_id, transcript_text, transcript_cues, chapters, summary, duration_seconds')
+      .select('id, video_id, transcript_text, transcript_cues, chapters, summary, duration_seconds, quiz_questions')
       .eq('id', lessonId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -79,7 +74,7 @@ async function loadCachedTranscript(supabase, userId, lessonId, videoUrl) {
     if (!videoId) return null;
     const { data } = await supabase
       .from('video_lessons')
-      .select('id, video_id, transcript_text, transcript_cues, chapters, summary, duration_seconds')
+      .select('id, video_id, transcript_text, transcript_cues, chapters, summary, duration_seconds, quiz_questions')
       .eq('user_id', userId)
       .eq('video_id', videoId)
       .order('created_at', { ascending: false })
@@ -91,7 +86,7 @@ async function loadCachedTranscript(supabase, userId, lessonId, videoUrl) {
   return null;
 }
 
-// POST /api/youtube/analyze
+// POST /api/youtube/analyze — persist lesson, run transcript→vocab→highlights→quiz off-request
 router.post('/analyze', async (req, res, next) => {
   try {
     const { error, value } = analyzeSchema.validate(req.body);
@@ -101,6 +96,13 @@ router.post('/analyze', async (req, res, next) => {
     }
 
     const { videoUrl, lessonId: requestedLessonId } = value;
+    const videoId = youtubeTranscriptService.extractVideoId(videoUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'invalid_youtube_url',
+        message: 'Please paste a valid YouTube URL.',
+      });
+    }
 
     const aiConfigError = aiService.configurationError();
     if (aiConfigError) {
@@ -124,216 +126,122 @@ router.post('/analyze', async (req, res, next) => {
       console.log('Could not fetch user CEFR level, using default B2');
     }
 
-    console.log(`🎥 Extracting transcript for: ${videoUrl}`);
-    const transcriptResult = await youtubeTranscriptService.processYouTubeUrl(videoUrl, {
-      transcript24TimeoutMs: 60000,
-      metaTimeoutMs: 8000,
+    const candidates = [];
+    if (requestedLessonId) {
+      const { data: owned } = await req.supabase
+        .from('video_lessons')
+        .select('*')
+        .eq('id', requestedLessonId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      if (owned) candidates.push(owned);
+    }
+    const { data: sameVideo } = await req.supabase
+      .from('video_lessons')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .eq('video_id', videoId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    candidates.push(...(sameVideo || []));
+
+    const reuseId = pickLessonToReuse(candidates, {
+      lessonId: requestedLessonId,
+      videoId,
     });
 
-    if (!transcriptResult.success) {
-      return res.status(400).json({
-        error: 'youtube_transcript_failed',
-        message: transcriptResult.error,
-      });
-    }
-
-    const {
-      content,
-      title,
-      videoInfo,
-      cues: rawCues = [],
-      chapters: rawChapters = [],
-      provider = null,
-      mode = null,
-    } = transcriptResult;
-    const videoId = youtubeTranscriptService.extractVideoId(videoUrl);
-    const durationSeconds =
-      typeof videoInfo?.duration === 'number' ? videoInfo.duration : null;
-
-    // Bound cue payload size for long interviews (DB insert + JSON response)
-    const cues = capCues(rawCues, ANALYZE_MAX_CUES);
-    const vocabText = sampleTranscriptForAnalysis(content, ANALYZE_VOCAB_SAMPLE_CHARS);
-    const summaryText = sampleTranscriptForAnalysis(content, ANALYZE_SUMMARY_SAMPLE_CHARS);
-
-    let knownWords = new Set();
-    let learnedWords = new Set();
-    try {
-      const [knownResult, wordsResult] = await Promise.all([
-        req.supabase.from('known_words').select('word').eq('user_id', req.user.id),
-        req.supabase.from('words').select('word').eq('user_id', req.user.id),
-      ]);
-      knownWords = new Set((knownResult.data || []).map((k) => k.word.toLowerCase()));
-      learnedWords = new Set((wordsResult.data || []).map((w) => w.word.toLowerCase()));
-    } catch (err) {
-      console.log('Could not fetch known/learned words:', err.message);
-    }
-
-    let chapters = normalizeChapters(rawChapters);
-    const needAiChapters =
-      chapters.length === 0 &&
-      (durationSeconds == null || durationSeconds >= CHAPTER_MIN_DURATION_SEC);
-
-    // Vocab + summary in parallel — sequential 6-chunk AI was the main 502 cause on long videos
-    console.log(
-      `🤖 Analyzing vocabulary at ${userCefrLevel} (vocab sample ${vocabText.length}/${content.length} chars) + summary...`
-    );
-
-    const [vocabSettled, summarySettled] = await Promise.allSettled([
-      aiService.analyzeWebsiteContent(vocabText, userCefrLevel, {
-        limit: 30,
-        chunksToProcess: ANALYZE_VOCAB_CHUNKS,
-        chunkTimeout: 45000,
-      }),
-      aiService.summarizeAndChapter({
-        transcript: summaryText,
-        title: title || videoInfo?.title || '',
-        durationSeconds,
-        existingChapters: chapters.length ? chapters : null,
-        needChapters: needAiChapters,
-      }),
-    ]);
-
-    let vocabulary = [];
-    const warnings = [];
-    if (vocabSettled.status === 'fulfilled') {
-      vocabulary = (vocabSettled.value.vocabulary || []).map((item) => ({
-        ...item,
-        isKnown: knownWords.has(item.word.toLowerCase()),
-        isLearned: learnedWords.has(item.word.toLowerCase()),
-      }));
-    } else {
-      const mapped = publicAiFailure(vocabSettled.reason);
-      console.warn('Vocabulary analysis failed:', vocabSettled.reason?.message);
-      warnings.push(`Vocabulary: ${mapped.message}`);
-    }
-
-    let summary = '';
-    if (summarySettled.status === 'fulfilled') {
-      summary = summarySettled.value.summary || '';
-      if (summarySettled.value.chapters?.length) {
-        chapters = normalizeChapters(summarySettled.value.chapters);
-      }
-    } else {
-      const mapped = publicAiFailure(summarySettled.reason);
-      console.warn('Summary/chapter generation failed:', summarySettled.reason?.message);
-      warnings.push(`Highlights: ${mapped.message}`);
-    }
-
-    let lessonId = null;
-    const baseLesson = {
+    const stub = {
       user_id: req.user.id,
       video_url: videoUrl,
       video_id: videoId,
-      title: title || videoInfo?.title,
-      thumbnail_url: videoInfo?.thumbnail || null,
       status: 'analyzed',
-    };
-    const cacheLesson = {
-      ...baseLesson,
-      transcript_cues: cues,
-      transcript_text: content,
-      summary: summary || null,
-      chapters: chapters.length ? chapters : null,
-      duration_seconds: durationSeconds,
-      transcript_provider: provider,
-    };
-    const checkpointLesson = {
-      ...cacheLesson,
       current_step: 2,
       user_cefr_level: userCefrLevel,
-      vocabulary_snapshot: vocabulary,
+      prepare_status: PREPARE_STATUS.pending,
+      prepare_step: PREPARE_STEPS.transcript,
+      prepare_error: null,
+      summary_status: SUMMARY_STATUS.pending,
+      vocabulary_snapshot: null,
+      quiz_questions: null,
     };
 
-    try {
-      const candidates = [];
-      if (requestedLessonId) {
-        const { data: owned } = await req.supabase
+    let lessonId = reuseId || null;
+    if (reuseId) {
+      const patch = { ...stub };
+      delete patch.user_id;
+      const err = await patchLessonPrepare(req.supabase, req.user.id, reuseId, patch);
+      if (err) {
+        console.warn('Lesson reuse patch failed:', err.message);
+      }
+    } else {
+      const attempts = [
+        stub,
+        {
+          user_id: stub.user_id,
+          video_url: stub.video_url,
+          video_id: stub.video_id,
+          status: stub.status,
+        },
+      ];
+      for (const row of attempts) {
+        const { data: lesson, error: lessonErr } = await req.supabase
           .from('video_lessons')
-          .select('id, video_id, status, updated_at, created_at')
-          .eq('id', requestedLessonId)
-          .eq('user_id', req.user.id)
-          .maybeSingle();
-        if (owned) candidates.push(owned);
-      }
-      if (videoId) {
-        const { data: sameVideo } = await req.supabase
-          .from('video_lessons')
-          .select('id, video_id, status, updated_at, created_at')
-          .eq('user_id', req.user.id)
-          .eq('video_id', videoId)
-          .order('updated_at', { ascending: false })
-          .limit(10);
-        candidates.push(...(sameVideo || []));
-      }
-      const reuseId = pickLessonToReuse(candidates, {
-        lessonId: requestedLessonId,
-        videoId,
-      });
-
-      const attempts = [checkpointLesson, cacheLesson, baseLesson];
-      if (reuseId) {
-        for (const row of attempts) {
-          const patch = { ...row };
-          delete patch.user_id;
-          patch.updated_at = new Date().toISOString();
-          const { data: lesson, error: lessonErr } = await req.supabase
-            .from('video_lessons')
-            .update(patch)
-            .eq('id', reuseId)
-            .eq('user_id', req.user.id)
-            .select('id')
-            .maybeSingle();
-          if (!lessonErr && lesson) {
-            lessonId = lesson.id;
-            break;
-          }
-          console.warn('Lesson update attempt failed:', lessonErr?.message);
+          .insert(row)
+          .select('id')
+          .single();
+        if (!lessonErr && lesson) {
+          lessonId = lesson.id;
+          break;
         }
+        console.warn('Lesson insert attempt failed:', lessonErr?.message);
       }
-      if (!lessonId) {
-        for (const row of attempts) {
-          const { data: lesson, error: lessonErr } = await req.supabase
-            .from('video_lessons')
-            .insert(row)
-            .select('id')
-            .single();
-          if (!lessonErr && lesson) {
-            lessonId = lesson.id;
-            break;
-          }
-          console.warn('Lesson insert attempt failed:', lessonErr?.message);
-        }
-      }
-    } catch (err) {
-      console.log('Could not save video lesson:', err.message);
     }
 
-    res.json({
+    if (!lessonId) {
+      return res.status(500).json({
+        error: 'lesson_create_failed',
+        message: 'Could not start this Learn session. Try again.',
+      });
+    }
+
+    const reused = candidates.find((row) => row.id === lessonId) || {};
+    enqueueLessonPrepare({
+      supabase: req.supabase,
+      userId: req.user.id,
+      lesson: {
+        ...reused,
+        ...stub,
+        id: lessonId,
+        vocabulary_snapshot: null,
+        quiz_questions: null,
+        transcript_text: null,
+        summary: null,
+      },
+    });
+
+    return res.status(202).json({
       success: true,
+      status: PREPARE_STATUS.pending,
       lessonId,
       videoInfo: {
         videoId,
-        title: title || videoInfo?.title,
-        thumbnail: videoInfo?.thumbnail || null,
-        duration: durationSeconds,
-        channel: videoInfo?.channel || videoInfo?.uploader || null,
+        title: reused.title || null,
+        thumbnail: reused.thumbnail_url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+        duration: reused.duration_seconds ?? null,
+        channel: null,
       },
-      vocabulary,
-      cues,
-      summary,
-      chapters,
-      transcriptProvider: provider,
-      transcriptMode: mode,
-      transcriptPreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
-      transcriptLength: content.length,
-      cuesTotal: Array.isArray(rawCues) ? rawCues.length : 0,
-      cuesReturned: cues.length,
+      vocabulary: [],
+      cues: [],
+      summary: '',
+      chapters: [],
       userCefrLevel,
-      totalFound: vocabulary.length,
-      knownCount: vocabulary.filter((v) => v.isKnown).length,
-      learnedCount: vocabulary.filter((v) => v.isLearned && !v.isKnown).length,
-      newCount: vocabulary.filter((v) => !v.isKnown && !v.isLearned).length,
-      warnings,
+      vocabReady: false,
+      prepareStatus: PREPARE_STATUS.pending,
+      prepareStep: PREPARE_STEPS.transcript,
+      prepareJob: buildPrepareJobView({
+        prepare_status: PREPARE_STATUS.pending,
+        prepare_step: PREPARE_STEPS.transcript,
+      }),
     });
   } catch (error) {
     console.error('YouTube analyze error:', error);
@@ -350,13 +258,7 @@ router.post('/quiz', async (req, res, next) => {
       return next(error);
     }
 
-    const {
-      videoUrl,
-      lessonId,
-      questionCount,
-      vocabularyWords = [],
-      vocabularyWordIds = [],
-    } = value;
+    const { videoUrl, lessonId } = value;
 
     const aiConfigError = aiService.configurationError();
     if (aiConfigError) {
@@ -366,122 +268,58 @@ router.post('/quiz', async (req, res, next) => {
       });
     }
 
-    let content = null;
-    let videoId = youtubeTranscriptService.extractVideoId(videoUrl);
-    let cachedLessonId = lessonId || null;
+    const cached = await loadCachedTranscript(
+      req.supabase,
+      req.user.id,
+      lessonId,
+      videoUrl
+    );
+    const cachedLessonId = cached?.id || lessonId || null;
 
-    // Prefer cached transcript
-    try {
-      const cached = await loadCachedTranscript(
-        req.supabase,
-        req.user.id,
-        lessonId,
-        videoUrl
-      );
-      if (cached?.transcript_text) {
-        content = cached.transcript_text;
-        videoId = cached.video_id || videoId;
-        cachedLessonId = cached.id;
-        console.log(`📦 Using cached transcript for lesson ${cached.id}`);
-      }
-    } catch (cacheErr) {
-      console.warn('Cache lookup failed:', cacheErr.message);
+    if (Array.isArray(cached?.quiz_questions) && cached.quiz_questions.length) {
+      return res.json({
+        success: true,
+        status: 'ready',
+        videoId: cached.video_id || youtubeTranscriptService.extractVideoId(videoUrl),
+        lessonId: cachedLessonId,
+        questions: cached.quiz_questions,
+        totalQuestions: cached.quiz_questions.length,
+      });
     }
 
-    if (!content) {
-      console.log(`🎥 Fetching transcript for quiz: ${videoUrl}`);
-      const transcriptResult = await youtubeTranscriptService.processYouTubeUrl(videoUrl);
-
-      if (!transcriptResult.success) {
-        return res.status(400).json({
-          error: 'youtube_transcript_failed',
-          message: transcriptResult.error,
+    if (cachedLessonId) {
+      const { data: lesson } = await req.supabase
+        .from('video_lessons')
+        .select('*')
+        .eq('id', cachedLessonId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      if (lesson) {
+        const prep = resolvePrepareStatus(lesson);
+        if (prep !== PREPARE_STATUS.pending) {
+          await patchLessonPrepare(req.supabase, req.user.id, lesson.id, {
+            prepare_status: PREPARE_STATUS.pending,
+            prepare_step: PREPARE_STEPS.quiz,
+            quiz_questions: null,
+          });
+        }
+        enqueueLessonPrepare({
+          supabase: req.supabase,
+          userId: req.user.id,
+          lesson: { ...lesson, quiz_questions: null },
+        });
+        return res.status(202).json({
+          success: true,
+          status: PREPARE_STATUS.pending,
+          lessonId: lesson.id,
+          questions: [],
         });
       }
-      content = transcriptResult.content;
     }
 
-    let userCefrLevel = 'B2';
-    try {
-      const { data: profile } = await req.supabase
-        .from('profiles')
-        .select('cefr_level')
-        .eq('id', req.user.id)
-        .single();
-      if (profile?.cefr_level) {
-        userCefrLevel = profile.cefr_level;
-      }
-    } catch (err) {
-      console.log('Could not fetch user CEFR level');
-    }
-
-    // Resolve vocabulary words from IDs if needed
-    let vocabWords = [...vocabularyWords];
-    if ((!vocabWords.length) && vocabularyWordIds.length) {
-      try {
-        const { data: words } = await req.supabase
-          .from('words')
-          .select('word')
-          .eq('user_id', req.user.id)
-          .in('id', vocabularyWordIds);
-        vocabWords = (words || []).map((w) => w.word);
-      } catch (err) {
-        console.warn('Could not resolve vocabularyWordIds:', err.message);
-      }
-    }
-
-    console.log(`🧠 Generating ${questionCount} mixed quiz questions...`);
-    let validatedQuestions;
-    try {
-      validatedQuestions = await aiService.generateVideoMixedQuiz({
-        transcript: content,
-        userCefrLevel,
-        questionCount,
-        vocabularyWords: vocabWords,
-      });
-    } catch (aiErr) {
-      throw createPublicAiError(aiErr);
-    }
-
-    try {
-      const quizPatch = {
-        quiz_total: validatedQuestions.length,
-        status: 'quiz_generated',
-        current_step: 4,
-        quiz_questions: validatedQuestions,
-        updated_at: new Date().toISOString(),
-      };
-      let query = req.supabase
-        .from('video_lessons')
-        .update(quizPatch)
-        .eq('user_id', req.user.id);
-
-      if (cachedLessonId) {
-        query = query.eq('id', cachedLessonId);
-      } else {
-        query = query.eq('video_id', videoId);
-      }
-      const { error: quizUpdateErr } = await query;
-      if (quizUpdateErr) {
-        const { current_step, quiz_questions, updated_at, ...legacyPatch } = quizPatch;
-        let fallback = req.supabase
-          .from('video_lessons')
-          .update(legacyPatch)
-          .eq('user_id', req.user.id);
-        if (cachedLessonId) fallback = fallback.eq('id', cachedLessonId);
-        else fallback = fallback.eq('video_id', videoId);
-        await fallback;
-      }
-    } catch (err) {
-      console.log('Could not update video lesson:', err.message);
-    }
-
-    res.json({
-      success: true,
-      videoId,
-      lessonId: cachedLessonId,
-      questions: validatedQuestions,
-      totalQuestions: validatedQuestions.length,
+    return res.status(400).json({
+      error: 'lesson_not_found',
+      message: 'Start the video from Learn first, then take the quiz.',
     });
   } catch (error) {
     console.error('YouTube quiz error:', error);
@@ -715,9 +553,7 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
 
     const { data: lesson, error } = await req.supabase
       .from('video_lessons')
-      .select(
-        'id, title, transcript_text, summary, chapters, duration_seconds'
-      )
+      .select('*')
       .eq('id', lessonId)
       .eq('user_id', req.user.id)
       .maybeSingle();
@@ -732,6 +568,15 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
 
     const transcript = lesson.transcript_text || '';
     if (transcript.trim().length < 80) {
+      if (resolvePrepareStatus(lesson) === PREPARE_STATUS.pending) {
+        return res.status(202).json({
+          success: true,
+          lessonId,
+          status: SUMMARY_STATUS.pending,
+          summary: '',
+          chapters: [],
+        });
+      }
       return res.status(400).json({
         error: 'transcript_missing',
         message: 'This session has no transcript to summarize. Re-analyze the video.',
@@ -739,73 +584,51 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
     }
 
     const existingChapters = normalizeChapters(lesson.chapters);
-    const summaryText = sampleTranscriptForAnalysis(
-      transcript,
-      ANALYZE_SUMMARY_SAMPLE_CHARS
-    );
+    const status = resolveSummaryStatus(lesson);
+    const existingSummary =
+      status === SUMMARY_STATUS.ready ? lesson.summary || '' : '';
 
-    console.log(`📝 Generating highlights for lesson ${lessonId}...`);
-    let result;
-    try {
-      result = await withTimeout(
-        aiService.summarizeAndChapter({
-          transcript: summaryText,
-          title: lesson.title || '',
-          durationSeconds: lesson.duration_seconds,
-          existingChapters: existingChapters.length ? existingChapters : null,
-          // Highlights button is summary-only; chapters on this path blew the ~100s proxy budget
-          needChapters: false,
-          firstTimeout: HIGHLIGHTS_FIRST_PASS_MS,
-          retryTimeout: HIGHLIGHTS_RETRY_PASS_MS,
-        }),
-        HIGHLIGHTS_ROUTE_TIMEOUT_MS,
-        'highlights'
-      );
-    } catch (aiErr) {
-      if (aiErr?.code === 'timeout') {
-        return res.status(504).json({
-          error: 'highlights_timeout',
-          message:
-            'Generating highlights took too long. Please try again in a moment.',
-        });
-      }
-      throw createPublicAiError(aiErr);
-    }
-
-    const summary = result.summary || '';
-    const chapters = result.chapters?.length
-      ? normalizeChapters(result.chapters)
-      : existingChapters;
-
-    if (!summary) {
-      return res.status(502).json({
-        error: 'highlights_failed',
-        message:
-          'Could not generate highlights for this video. Try again in a moment.',
-        summary: '',
-        chapters,
+    if (
+      existingSummary &&
+      status !== SUMMARY_STATUS.pending &&
+      status !== SUMMARY_STATUS.failed
+    ) {
+      return res.json({
+        success: true,
+        lessonId,
+        status: SUMMARY_STATUS.ready,
+        summary: existingSummary,
+        chapters: existingChapters,
       });
     }
 
-    const { error: updateErr } = await req.supabase
-      .from('video_lessons')
-      .update({
-        summary,
-        chapters: chapters.length ? chapters : lesson.chapters || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', lessonId)
-      .eq('user_id', req.user.id);
-
-    if (updateErr) {
-      console.warn('Could not persist highlights:', updateErr.message);
+    if (status === SUMMARY_STATUS.pending) {
+      return res.status(202).json({
+        success: true,
+        lessonId,
+        status: SUMMARY_STATUS.pending,
+        summary: existingSummary || '',
+        chapters: existingChapters,
+      });
     }
 
-    res.json({
+    await patchLessonPrepare(req.supabase, req.user.id, lessonId, {
+      summary_status: SUMMARY_STATUS.pending,
+      summary_error: null,
+      prepare_status: PREPARE_STATUS.pending,
+    });
+    enqueueLessonPrepare({
+      supabase: req.supabase,
+      userId: req.user.id,
+      lesson,
+    });
+
+    return res.status(202).json({
       success: true,
       lessonId,
-      summary,
-      chapters,
+      status: SUMMARY_STATUS.pending,
+      summary: '',
+      chapters: existingChapters,
     });
   } catch (error) {
     console.error('Generate highlights error:', error);

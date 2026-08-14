@@ -240,7 +240,7 @@ export const youtubeAPI = {
     api.post(
       '/youtube/analyze',
       { videoUrl, lessonId: options.lessonId },
-      { timeout: 180000 }
+      { timeout: 15000 }
     ),
 
   generateQuiz: (videoUrl, options = {}) =>
@@ -253,7 +253,7 @@ export const youtubeAPI = {
         vocabularyWords: options.vocabularyWords,
         questionCount: options.questionCount,
       },
-      { timeout: 180000 }
+      { timeout: 15000 }
     ),
 
   complete: (data) =>
@@ -269,7 +269,7 @@ export const youtubeAPI = {
     api.get(`/youtube/lessons/${id}`),
 
   generateHighlights: (id) =>
-    api.post(`/youtube/lessons/${id}/highlights`, {}, { timeout: 180000 }),
+    api.post(`/youtube/lessons/${id}/highlights`, {}, { timeout: 15000 }),
 
   saveProgress: (id, data) =>
     api.patch(`/youtube/lessons/${id}/progress`, data),

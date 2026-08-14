@@ -114,6 +114,10 @@ assertEqual(hydrated.questions.length, 1, 'hydrate quiz questions');
 assertEqual(hydrated.quizAnswers[0], 1, 'hydrate quiz answers');
 assertEqual(hydrated.cues.length, 1, 'hydrate cues');
 assertEqual(hydrated.summary, 'A fruit video', 'hydrate summary');
+assertEqual(hydrated.summaryStatus, 'ready', 'hydrate summaryStatus from text');
+assertEqual(hydrated.prepareStatus, 'idle', 'hydrate default prepareStatus');
+assertEqual(hydrated.vocabReady, true, 'hydrate vocabReady when snapshot exists');
+assertEqual(hydrated.prepareJob.steps.length, 4, 'hydrate prepareJob has four steps');
 
 const dumpHydrated = hydrateLessonResponse({
   ...lesson,

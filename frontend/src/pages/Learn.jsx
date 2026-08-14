@@ -22,12 +22,14 @@ import {
   extractYoutubeId,
   lessonNeedsReanalyze,
   reuseSavedLessonId,
+  prepareStepLabel,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
 import { apiErrorMessage } from '@/lib/aiErrors';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
+import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import LessonSummary from '@/components/Learn/LessonSummary';
 import WordDetailModal, {
   normalizeWordDetail,
@@ -711,6 +713,8 @@ export default function Learn() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [step, setStep] = useState(STEPS.URL);
   const [loading, setLoading] = useState(false);
+  const [prepareStep, setPrepareStep] = useState(null);
+  const [prepareJob, setPrepareJob] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -739,32 +743,63 @@ export default function Learn() {
   const highlightsAttemptedRef = useRef(new Set());
 
   const highlightsLoadingRef = useRef(false);
+  const highlightsPollGenRef = useRef(0);
   const generateHighlights = useCallback(async ({ auto = false } = {}) => {
     if (!lessonId || highlightsLoadingRef.current) return;
     highlightsLoadingRef.current = true;
+    const pollGen = highlightsPollGenRef.current + 1;
+    highlightsPollGenRef.current = pollGen;
     setHighlightsLoading(true);
     setError(null);
     try {
       const response = await youtubeAPI.generateHighlights(lessonId);
+      if (highlightsPollGenRef.current !== pollGen) return;
       const nextSummary = response.data?.summary || '';
-      setSummary(nextSummary);
-      if (Array.isArray(response.data?.chapters) && response.data.chapters.length) {
-        setChapters(response.data.chapters);
+      if (nextSummary) {
+        setSummary(nextSummary);
+        if (Array.isArray(response.data?.chapters) && response.data.chapters.length) {
+          setChapters(response.data.chapters);
+        }
+        if (!auto) toast.success('Highlights ready');
+        return;
       }
-      if (!nextSummary) {
-        toast.error(
-          response.data?.message || 'Could not generate highlights for this video'
-        );
-      } else if (!auto) {
-        toast.success('Highlights ready');
+
+      const deadline = Date.now() + 180000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (highlightsPollGenRef.current !== pollGen) return;
+        const poll = await youtubeAPI.getLesson(lessonId);
+        if (highlightsPollGenRef.current !== pollGen) return;
+        setPrepareJob(poll.data?.prepareJob || null);
+        const polledSummary = poll.data?.summary || '';
+        if (polledSummary) {
+          setSummary(polledSummary);
+          if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
+            setChapters(poll.data.chapters);
+          }
+          if (!auto) toast.success('Highlights ready');
+          return;
+        }
+        if (poll.data?.summaryStatus === 'failed') {
+          const failMsg =
+            poll.data?.summaryError ||
+            'Could not generate highlights for this video';
+          setError(failMsg);
+          toast.error(failMsg);
+          return;
+        }
       }
+      toast.error('Highlights are still generating. Open this session again in a moment.');
     } catch (err) {
-      const msg = apiErrorMessage(err, 'Failed to generate highlights');
+      if (highlightsPollGenRef.current !== pollGen) return;
+      const msg = apiErrorMessage(err, 'Could not start highlights');
       setError(msg);
       toast.error(msg);
     } finally {
-      highlightsLoadingRef.current = false;
-      setHighlightsLoading(false);
+      if (highlightsPollGenRef.current === pollGen) {
+        highlightsLoadingRef.current = false;
+        setHighlightsLoading(false);
+      }
     }
   }, [lessonId]);
 
@@ -776,6 +811,34 @@ export default function Learn() {
     highlightsAttemptedRef.current.add(lessonId);
     generateHighlights({ auto: true });
   }, [lessonId, step, summary, generateHighlights]);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    if (prepareJob?.status !== 'pending') return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const poll = await youtubeAPI.getLesson(lessonId);
+        if (cancelled) return;
+        if (poll.data?.prepareJob) setPrepareJob(poll.data.prepareJob);
+        if (poll.data?.summary) setSummary(poll.data.summary);
+        if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
+          setChapters(poll.data.chapters);
+        }
+        if (Array.isArray(poll.data?.questions) && poll.data.questions.length) {
+          setQuestions(poll.data.questions);
+        }
+      } catch (err) {
+        console.warn('Prepare job poll failed:', err);
+      }
+    };
+    const timer = setInterval(tick, 2000);
+    tick();
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [lessonId, prepareJob?.status]);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -867,7 +930,22 @@ export default function Learn() {
         lessonId: id,
         vocabularyWords,
       });
-      const nextQuestions = response.data.questions || [];
+      let nextQuestions = response.data.questions || [];
+      if (!nextQuestions.length && id) {
+        const deadline = Date.now() + 180000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const poll = await youtubeAPI.getLesson(id);
+          setPrepareStep(poll.data?.prepareStep || 'quiz');
+          setPrepareJob(poll.data?.prepareJob || null);
+          nextQuestions = poll.data?.questions || [];
+          if (nextQuestions.length) break;
+          if (poll.data?.prepareStatus === 'failed') {
+            throw new Error(poll.data?.prepareError || 'Quiz preparation failed');
+          }
+          if (poll.data?.prepareStatus === 'ready' && !nextQuestions.length) break;
+        }
+      }
       setQuestions(nextQuestions);
       if (!nextQuestions.length) {
         toast.error('Could not generate quiz questions. Try a different video.');
@@ -916,35 +994,59 @@ export default function Learn() {
     setLoading(true);
     setError(null);
     setCurrentVideoUrl(videoUrl);
+    setPrepareStep('transcript');
 
     try {
       const response = await youtubeAPI.analyze(videoUrl, { lessonId: existingLessonId });
-      const data = response.data;
+      const kicked = response.data;
+      const nextLessonId = kicked.lessonId;
+      setLessonId(nextLessonId);
+      setVideoInfo(kicked.videoInfo);
+      setUserCefrLevel(kicked.userCefrLevel);
+      if (nextLessonId) {
+        setSearchParams({ lesson: nextLessonId }, { replace: true });
+      }
 
-      setVideoInfo(data.videoInfo);
-      setVocabulary(data.vocabulary);
-      setUserCefrLevel(data.userCefrLevel);
-      setLessonId(data.lessonId);
+      setPrepareJob(kicked.prepareJob || null);
+      let data = kicked;
+      if (!kicked.vocabReady && nextLessonId) {
+        const deadline = Date.now() + 300000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const poll = await youtubeAPI.getLesson(nextLessonId);
+          data = poll.data;
+          setPrepareStep(data.prepareStep || 'vocab');
+          setPrepareJob(data.prepareJob || null);
+          if (data.vocabReady) break;
+          if (data.prepareStatus === 'failed') {
+            throw new Error(data.prepareError || 'Could not prepare this video');
+          }
+        }
+        if (!data.vocabReady) {
+          throw new Error('This video is still preparing. Open the session again in a moment.');
+        }
+      }
+
+      setVideoInfo(data.videoInfo || kicked.videoInfo);
+      setVocabulary(data.vocabulary || []);
+      setUserCefrLevel(data.userCefrLevel || kicked.userCefrLevel);
       setCues(Array.isArray(data.cues) ? data.cues : []);
       setSummary(data.summary || '');
       setChapters(Array.isArray(data.chapters) ? data.chapters : []);
       setStudyWords([]);
-      setQuestions([]);
+      setQuestions(Array.isArray(data.questions) ? data.questions : []);
       setQuizAnswers({});
       setStep(STEPS.VOCAB);
-      if (data.lessonId) {
-        setSearchParams({ lesson: data.lessonId }, { replace: true });
-      }
+      setPrepareJob(data.prepareJob || null);
       loadHistory();
 
-      if (Array.isArray(data.warnings) && data.warnings.length) {
-        const warningText = data.warnings.join(' ');
-        setError(warningText);
-        toast.error(warningText);
-      } else if (data.totalFound === 0) {
+      const totalFound = (data.vocabulary || []).length;
+      if (data.prepareError && data.prepareStatus !== 'failed') {
+        toast.error(data.prepareError);
+      } else if (totalFound === 0) {
         toast('No new vocabulary found for your level. Try another video.', { icon: 'ℹ️' });
       } else {
-        toast.success(`Found ${data.totalFound} vocabulary items`);
+        toast.success(`Found ${totalFound} vocabulary items`);
       }
     } catch (err) {
       const msg = apiErrorMessage(err, 'Failed to analyze video');
@@ -952,6 +1054,7 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setLoading(false);
+      setPrepareStep(null);
     }
   }, [loadHistory, setSearchParams]);
 
@@ -1339,11 +1442,18 @@ export default function Learn() {
           </div>
         ) : null}
 
+        {step !== STEPS.URL && prepareJob?.status === 'pending' ? (
+          <div className="max-w-6xl mx-auto mb-4">
+            <PrepareJobPanel job={prepareJob} />
+          </div>
+        ) : null}
+
         {/* Step content */}
         {step === STEPS.URL && (
           <StepUrl
             onSubmit={handleAnalyze}
             loading={loading}
+            loadingLabel={prepareStepLabel(prepareStep)}
             error={error}
             history={history}
             historyLoading={historyLoading}
@@ -1355,6 +1465,7 @@ export default function Learn() {
             onRename={handleRenameLesson}
             onReextract={handleReextract}
             deletingId={deletingId}
+            prepareJob={prepareJob}
             renamingId={renamingId}
           />
         )}

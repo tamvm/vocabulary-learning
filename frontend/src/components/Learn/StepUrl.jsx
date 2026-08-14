@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatRelativeTime } from '@/lib/utils';
+import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import {
   isUnfinishedLesson,
   latestUnfinished,
@@ -173,6 +174,7 @@ function SessionRow({
 export default function StepUrl({
   onSubmit,
   loading,
+  loadingLabel = 'Extracting transcript...',
   error,
   history,
   historyLoading,
@@ -184,6 +186,7 @@ export default function StepUrl({
   onRename,
   onReextract,
   deletingId,
+  prepareJob = null,
   renamingId,
 }) {
   const [url, setUrl] = React.useState('');
@@ -257,7 +260,7 @@ export default function StepUrl({
           {loading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Extracting transcript...
+              {loadingLabel}
             </>
           ) : (
             <>
@@ -269,11 +272,8 @@ export default function StepUrl({
       </form>
 
       {loading && (
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            This may take 30-60 seconds for long videos...
-          </div>
+        <div className="mb-8">
+          <PrepareJobPanel job={prepareJob} />
         </div>
       )}
 
@@ -333,6 +333,8 @@ export default function StepUrl({
             </div>
           </div>
         </div>
+      )}
+
       )}
 
       <div className="mt-10">

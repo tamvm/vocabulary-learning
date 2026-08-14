@@ -24,7 +24,7 @@ export function apiErrorMessage(err, fallback = 'Request failed') {
       code === 'ECONNRESET' ||
       /^Network Error$/i.test(raw))
   ) {
-    return 'The connection was interrupted before the server finished. Generating highlights can hit a proxy timeout — please try again.';
+    return 'The connection was interrupted before the server finished. Please try again.';
   }
 
   return raw || fallback;
