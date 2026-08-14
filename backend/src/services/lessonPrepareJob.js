@@ -73,7 +73,11 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
     } else if (status === PREPARE_STATUS.ready && id !== PREPARE_STEPS.quiz) {
       state = 'done';
     }
-    return { id, label: PREPARE_STEP_LABELS[id], state };
+    const progress =
+      id === PREPARE_STEPS.vocab && lesson?.prepare_progress
+        ? String(lesson.prepare_progress)
+        : '';
+    return { id, label: PREPARE_STEP_LABELS[id], state, progress };
   });
 
   return {
@@ -139,6 +143,7 @@ const OPTIONAL_COLUMNS = [
   'prepare_status',
   'prepare_step',
   'prepare_error',
+  'prepare_progress',
   'summary_status',
   'summary_error',
 ];
@@ -178,6 +183,7 @@ async function defaultAnalyzeVocab(text, cefr, options = {}) {
     chunksToProcess: 3,
     chunkTimeout: VOCAB_TIMEOUT_MS,
     preferRecall: Boolean(options.preferRecall),
+    onProgress: typeof options.onProgress === 'function' ? options.onProgress : null,
   });
 }
 
@@ -256,6 +262,7 @@ export async function runLessonPreparePipeline({
 
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.vocab,
+    prepare_progress: null,
   });
   console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.vocab}`);
 
@@ -265,11 +272,25 @@ export async function runLessonPreparePipeline({
       row.transcript_text || '',
       VOCAB_SAMPLE_CHARS
     );
+    const reportVocabProgress = (p) => {
+      const total = Number(p?.totalChunks) || 0;
+      const current = Number(p?.currentChunk) || 0;
+      if (!total) return;
+      patchLessonPrepare(supabase, userId, lessonId, {
+        prepare_step: PREPARE_STEPS.vocab,
+        prepare_progress: `${Math.min(current, total)}/${total}`,
+      }).catch(() => {});
+    };
     let vocabulary = [];
     try {
-      let vocabResult = await analyzeVocab(vocabText, cefr);
+      let vocabResult = await analyzeVocab(vocabText, cefr, {
+        onProgress: reportVocabProgress,
+      });
       if (!(vocabResult?.vocabulary || []).length) {
-        vocabResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
+        vocabResult = await analyzeVocab(vocabText, cefr, {
+          preferRecall: true,
+          onProgress: reportVocabProgress,
+        });
       }
       const knownWords = new Set();
       const learnedWords = new Set();
@@ -291,7 +312,10 @@ export async function runLessonPreparePipeline({
     } catch (vocabErr) {
       console.warn('Vocabulary step failed:', vocabErr?.message);
       try {
-        const retryResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
+        const retryResult = await analyzeVocab(vocabText, cefr, {
+          preferRecall: true,
+          onProgress: reportVocabProgress,
+        });
         vocabulary = (retryResult?.vocabulary || []).map((item) => ({
           ...item,
           isKnown: false,
@@ -306,12 +330,14 @@ export async function runLessonPreparePipeline({
       user_cefr_level: row.user_cefr_level || 'B2',
       current_step: 2,
       status: 'analyzed',
+      prepare_progress: null,
     });
     row.vocabulary_snapshot = vocabulary;
   }
 
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.highlights,
+    prepare_progress: null,
     summary_status: SUMMARY_STATUS.pending,
     summary_error: null,
   });
