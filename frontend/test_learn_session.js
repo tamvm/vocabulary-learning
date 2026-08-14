@@ -5,10 +5,13 @@
 
 import {
   LEARN_STEPS,
+  extractYoutubeId,
   isUnfinishedLesson,
   latestUnfinished,
+  lessonNeedsReanalyze,
   lessonScoreLabel,
   lessonThumbnail,
+  reuseUnfinishedLessonId,
   statusTone,
   stepLabel,
 } from './src/lib/learnSession.js';
@@ -63,6 +66,65 @@ assertEqual(
   lessonThumbnail(unfinished),
   'https://img.youtube.com/vi/abcdefghijk/mqdefault.jpg',
   'falls back to YouTube thumbnail'
+);
+
+assertEqual(
+  extractYoutubeId('https://www.youtube.com/watch?v=abcdefghijk'),
+  'abcdefghijk',
+  'extracts watch URL id'
+);
+assertEqual(
+  extractYoutubeId('https://youtu.be/abcdefghijk'),
+  'abcdefghijk',
+  'extracts short URL id'
+);
+assertEqual(extractYoutubeId('not-a-url'), null, 'invalid URL has no id');
+
+assertEqual(
+  reuseUnfinishedLessonId([completed, unfinished], 'abcdefghijk'),
+  'a',
+  'reuses unfinished session for same video'
+);
+assertEqual(
+  reuseUnfinishedLessonId([completed], 'abcdefghijk'),
+  null,
+  'does not reuse completed session'
+);
+assertEqual(
+  lessonNeedsReanalyze({
+    vocabulary: [{ word: 'cat' }],
+    studyWords: [],
+    questions: [],
+    cues: [],
+    summary: '',
+    lesson: { videoUrl: 'https://youtu.be/abcdefghijk' },
+  }),
+  false,
+  'does not reanalyze when vocabulary exists'
+);
+assertEqual(
+  lessonNeedsReanalyze({
+    vocabulary: [],
+    studyWords: [],
+    questions: [],
+    cues: [{ start: 0, text: 'hi' }],
+    summary: '',
+    lesson: { videoUrl: 'https://youtu.be/abcdefghijk' },
+  }),
+  false,
+  'does not reanalyze when cues exist'
+);
+assertEqual(
+  lessonNeedsReanalyze({
+    vocabulary: [],
+    studyWords: [],
+    questions: [],
+    cues: [],
+    summary: '',
+    lesson: { videoUrl: 'https://youtu.be/abcdefghijk' },
+  }),
+  true,
+  'reanalyzes empty shell with a video URL'
 );
 
 if (failed) {

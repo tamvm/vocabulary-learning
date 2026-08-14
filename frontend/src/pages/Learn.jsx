@@ -17,7 +17,12 @@ import {
 } from 'lucide-react';
 import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
-import { LEARN_STEPS as STEPS } from '@/lib/learnSession';
+import {
+  LEARN_STEPS as STEPS,
+  extractYoutubeId,
+  lessonNeedsReanalyze,
+  reuseUnfinishedLessonId,
+} from '@/lib/learnSession';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
@@ -804,13 +809,13 @@ export default function Learn() {
     return nextStep;
   }, [setSearchParams]);
 
-  const handleAnalyze = useCallback(async (videoUrl) => {
+  const analyzeVideo = useCallback(async (videoUrl, existingLessonId = null) => {
     setLoading(true);
     setError(null);
     setCurrentVideoUrl(videoUrl);
 
     try {
-      const response = await youtubeAPI.analyze(videoUrl);
+      const response = await youtubeAPI.analyze(videoUrl, { lessonId: existingLessonId });
       const data = response.data;
 
       setVideoInfo(data.videoInfo);
@@ -850,13 +855,11 @@ export default function Learn() {
     try {
       const response = await youtubeAPI.getLesson(id);
       const data = response.data;
-      const hasVocab = Array.isArray(data.vocabulary) && data.vocabulary.length > 0;
-      const hasStudy = Array.isArray(data.studyWords) && data.studyWords.length > 0;
       const hasQuiz = Array.isArray(data.questions) && data.questions.length > 0;
 
-      if (!hasVocab && !hasStudy && !hasQuiz && data.lesson?.videoUrl) {
+      if (lessonNeedsReanalyze(data)) {
         toast('This session has no saved vocabulary. Re-extracting the video…', { icon: 'ℹ️' });
-        await handleAnalyze(data.lesson.videoUrl);
+        await analyzeVideo(data.lesson.videoUrl, id);
         return;
       }
 
@@ -889,7 +892,16 @@ export default function Learn() {
     } finally {
       setResumeLoadingId(null);
     }
-  }, [applyHydratedLesson, generateQuiz, handleAnalyze, persistProgress]);
+  }, [analyzeVideo, applyHydratedLesson, generateQuiz, persistProgress]);
+
+  const handleAnalyze = useCallback(async (videoUrl) => {
+    const reuseId = reuseUnfinishedLessonId(history, extractYoutubeId(videoUrl));
+    if (reuseId) {
+      await resumeLesson(reuseId, 'resume');
+      return;
+    }
+    await analyzeVideo(videoUrl, null);
+  }, [analyzeVideo, history, resumeLesson]);
 
   useEffect(() => {
     loadHistory();

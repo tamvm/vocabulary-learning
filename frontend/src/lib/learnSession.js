@@ -9,6 +9,31 @@ export function isUnfinishedLesson(lesson) {
   return Boolean(lesson && lesson.status !== 'completed');
 }
 
+export function extractYoutubeId(url) {
+  const match = String(url || '').match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  return match ? match[1] : null;
+}
+
+export function reuseUnfinishedLessonId(lessons, videoId) {
+  if (!videoId) return null;
+  const match = (lessons || []).find(
+    (lesson) => lesson.video_id === videoId && isUnfinishedLesson(lesson)
+  );
+  return match?.id || null;
+}
+
+export function lessonNeedsReanalyze(data) {
+  const hasVocab = Array.isArray(data?.vocabulary) && data.vocabulary.length > 0;
+  const hasStudy = Array.isArray(data?.studyWords) && data.studyWords.length > 0;
+  const hasQuiz = Array.isArray(data?.questions) && data.questions.length > 0;
+  const hasCues = Array.isArray(data?.cues) && data.cues.length > 0;
+  const hasSummary = Boolean(data?.summary);
+  if (hasVocab || hasStudy || hasQuiz || hasCues || hasSummary) return false;
+  return Boolean(data?.lesson?.videoUrl);
+}
+
 export function latestUnfinished(lessons) {
   return (lessons || []).find(isUnfinishedLesson) || null;
 }

@@ -11,6 +11,7 @@ import {
   hydrateLessonResponse,
   inferCurrentStep,
   isUnfinishedLesson,
+  pickLessonToReuse,
   pickProgressFields,
 } from './src/services/videoLessonProgress.js';
 
@@ -148,6 +149,45 @@ assertDeepEqual(
 assert(
   !('vocabulary_snapshot' in pickProgressFields({ currentStep: 2 }, now)),
   'omitted snapshot fields are not wiped'
+);
+
+const older = {
+  id: 'old',
+  video_id: 'abcdefghijk',
+  status: 'analyzed',
+  updated_at: '2026-08-13T00:00:00.000Z',
+};
+const newer = {
+  id: 'new',
+  video_id: 'abcdefghijk',
+  status: 'analyzed',
+  updated_at: '2026-08-13T02:00:00.000Z',
+};
+const done = {
+  id: 'done',
+  video_id: 'abcdefghijk',
+  status: 'completed',
+  updated_at: '2026-08-13T03:00:00.000Z',
+};
+assertEqual(
+  pickLessonToReuse([older, newer, done], { lessonId: 'old' }),
+  'old',
+  'explicit lessonId wins'
+);
+assertEqual(
+  pickLessonToReuse([older, newer, done], { videoId: 'abcdefghijk' }),
+  'new',
+  'reuses newest unfinished for video'
+);
+assertEqual(
+  pickLessonToReuse([done], { videoId: 'abcdefghijk' }),
+  null,
+  'does not reuse completed lesson for a new extract'
+);
+assertEqual(
+  pickLessonToReuse([done], { lessonId: 'done', videoId: 'abcdefghijk' }),
+  'done',
+  'explicit id can reuse a completed lesson (re-extract in place)'
 );
 
 if (failed) {

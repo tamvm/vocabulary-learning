@@ -239,8 +239,12 @@ export const groupsAPI = {
 }
 
 export const youtubeAPI = {
-  analyze: (videoUrl) =>
-    api.post('/youtube/analyze', { videoUrl }, { timeout: 180000 }),
+  analyze: (videoUrl, options = {}) =>
+    api.post(
+      '/youtube/analyze',
+      { videoUrl, lessonId: options.lessonId },
+      { timeout: 180000 }
+    ),
 
   generateQuiz: (videoUrl, options = {}) =>
     api.post(

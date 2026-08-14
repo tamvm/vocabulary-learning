@@ -6,6 +6,7 @@ import {
   HISTORY_LIST_COLUMNS,
   HISTORY_LIST_COLUMNS_FALLBACK,
   hydrateLessonResponse,
+  pickLessonToReuse,
   pickProgressFields,
 } from '../services/videoLessonProgress.js';
 import {
@@ -24,6 +25,7 @@ const ANALYZE_MAX_CUES = 2500;
 
 const analyzeSchema = Joi.object({
   videoUrl: Joi.string().uri().required(),
+  lessonId: Joi.string().uuid().optional().allow(null),
 });
 
 const quizSchema = Joi.object({
@@ -93,7 +95,7 @@ router.post('/analyze', async (req, res, next) => {
       return next(error);
     }
 
-    const { videoUrl } = value;
+    const { videoUrl, lessonId: requestedLessonId } = value;
 
     let userCefrLevel = 'B2';
     try {
@@ -225,18 +227,64 @@ router.post('/analyze', async (req, res, next) => {
     };
 
     try {
-      const attempts = [checkpointLesson, cacheLesson, baseLesson];
-      for (const row of attempts) {
-        const { data: lesson, error: lessonErr } = await req.supabase
+      const candidates = [];
+      if (requestedLessonId) {
+        const { data: owned } = await req.supabase
           .from('video_lessons')
-          .insert(row)
-          .select('id')
-          .single();
-        if (!lessonErr && lesson) {
-          lessonId = lesson.id;
-          break;
+          .select('id, video_id, status, updated_at, created_at')
+          .eq('id', requestedLessonId)
+          .eq('user_id', req.user.id)
+          .maybeSingle();
+        if (owned) candidates.push(owned);
+      }
+      if (videoId) {
+        const { data: sameVideo } = await req.supabase
+          .from('video_lessons')
+          .select('id, video_id, status, updated_at, created_at')
+          .eq('user_id', req.user.id)
+          .eq('video_id', videoId)
+          .order('updated_at', { ascending: false })
+          .limit(10);
+        candidates.push(...(sameVideo || []));
+      }
+      const reuseId = pickLessonToReuse(candidates, {
+        lessonId: requestedLessonId,
+        videoId,
+      });
+
+      const attempts = [checkpointLesson, cacheLesson, baseLesson];
+      if (reuseId) {
+        for (const row of attempts) {
+          const patch = { ...row };
+          delete patch.user_id;
+          patch.updated_at = new Date().toISOString();
+          const { data: lesson, error: lessonErr } = await req.supabase
+            .from('video_lessons')
+            .update(patch)
+            .eq('id', reuseId)
+            .eq('user_id', req.user.id)
+            .select('id')
+            .maybeSingle();
+          if (!lessonErr && lesson) {
+            lessonId = lesson.id;
+            break;
+          }
+          console.warn('Lesson update attempt failed:', lessonErr?.message);
         }
-        console.warn('Lesson insert attempt failed:', lessonErr?.message);
+      }
+      if (!lessonId) {
+        for (const row of attempts) {
+          const { data: lesson, error: lessonErr } = await req.supabase
+            .from('video_lessons')
+            .insert(row)
+            .select('id')
+            .single();
+          if (!lessonErr && lesson) {
+            lessonId = lesson.id;
+            break;
+          }
+          console.warn('Lesson insert attempt failed:', lessonErr?.message);
+        }
       }
     } catch (err) {
       console.log('Could not save video lesson:', err.message);

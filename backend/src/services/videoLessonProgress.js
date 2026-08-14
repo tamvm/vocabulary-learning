@@ -113,6 +113,29 @@ export function hydrateLessonResponse(lesson) {
   };
 }
 
+/**
+ * Prefer an explicit lesson id, otherwise the newest unfinished row for this video.
+ * Completed lessons are never reused — a new extract should start a new session.
+ */
+export function pickLessonToReuse(lessons, { lessonId, videoId } = {}) {
+  const rows = lessons || [];
+  if (lessonId) {
+    const match = rows.find((row) => row.id === lessonId);
+    if (match) return match.id;
+  }
+  if (!videoId) return null;
+  const unfinished = rows.filter(
+    (row) => row.video_id === videoId && row.status !== 'completed'
+  );
+  if (!unfinished.length) return null;
+  unfinished.sort((a, b) => {
+    const aTime = Date.parse(a.updated_at || a.created_at || 0) || 0;
+    const bTime = Date.parse(b.updated_at || b.created_at || 0) || 0;
+    return bTime - aTime;
+  });
+  return unfinished[0].id;
+}
+
 export function pickProgressFields(body, now = new Date()) {
   const patch = {};
   if (body.currentStep != null) patch.current_step = body.currentStep;
