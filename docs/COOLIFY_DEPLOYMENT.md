@@ -75,7 +75,7 @@ RATE_LIMIT_MAX=1000
 5. Confirm AI env on the **running** backend (not only that the vars exist in the Coolify UI):
 
 ```bash
-# Live API (Coolify process env). Copy the Bearer token from DevTools after login.
+# Live API. Copy the browser session JWT (starts with eyJ), not AI_API_KEY.
 VOCA_ACCESS_TOKEN='…' npm run test:ai -- --remote --expect-provider opencode --expect-model mimo-v2.5
 
 # Same keys locally or `docker exec` in the backend container:

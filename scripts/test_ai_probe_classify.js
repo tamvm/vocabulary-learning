@@ -6,6 +6,8 @@ import {
   classifyChatCompletionBody,
   assertExpectedModel,
   assertExpectedProvider,
+  describeAccessToken,
+  hintForProbeFailure,
 } from './aiServiceProbe.js';
 
 assert.equal(classifyConfigBody({ config: { available: true, provider: 'opencode', model: 'mimo-v2.5' } }).ok, true);
@@ -29,5 +31,12 @@ assert.equal(assertExpectedModel('mimo-v2.5', 'mimo-v2.5').ok, true);
 assert.equal(assertExpectedModel('kimi-k2.7-code', 'mimo-v2.5').ok, false);
 assert.equal(assertExpectedProvider('opencode-go', 'opencode').ok, true);
 assert.equal(assertExpectedProvider('openai', 'opencode').ok, false);
+
+assert.equal(describeAccessToken('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.abc').ok, true);
+assert.equal(describeAccessToken('sk-not-a-user-session').kind, 'api_key');
+assert.equal(describeAccessToken('sk-not-a-user-session').ok, false);
+assert.match(describeAccessToken('sk-not-a-user-session').reason, /AI API key/);
+assert.match(hintForProbeFailure('auth'), /auth failure, not an AI config failure/);
+assert.match(hintForProbeFailure('ai'), /AI_PROVIDER/);
 
 console.log('test_ai_probe_classify: ok');

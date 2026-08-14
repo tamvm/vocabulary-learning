@@ -1,7 +1,46 @@
 /**
- * Classify AI probe responses. Used by scripts/test-ai-service.js.
+ * Classify AI probe responses. Used by scripts/check-ai-service.js.
  * Dictionary fallback on analyze-word must not count as a working LLM.
  */
+
+const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+export function describeAccessToken(token) {
+  const value = String(token || '').trim();
+  if (!value) {
+    return { kind: 'empty', ok: false, reason: 'VOCA_ACCESS_TOKEN is empty' };
+  }
+  if (JWT_RE.test(value)) {
+    return { kind: 'jwt', ok: true };
+  }
+  if (/^sk-/i.test(value) || /^oc-/i.test(value)) {
+    return {
+      kind: 'api_key',
+      ok: false,
+      reason:
+        'VOCA_ACCESS_TOKEN looks like an AI API key (sk-/oc-), not a logged-in user session. Remote mode needs the Supabase JWT from DevTools after login (Authorization: Bearer eyJ…). To test the key itself, run --direct with AI_API_KEY.',
+    };
+  }
+  return {
+    kind: 'unknown',
+    ok: false,
+    reason:
+      'VOCA_ACCESS_TOKEN is not a JWT. Copy the browser session token (three eyJ… segments), not AI_API_KEY. Or use VOCA_EMAIL / VOCA_PASSWORD.',
+  };
+}
+
+export function hintForProbeFailure(kind) {
+  if (kind === 'auth') {
+    return 'This was an auth failure, not an AI config failure. Remote /api/ai/* requires a Magic English login JWT. Coolify AI_PROVIDER / AI_API_KEY are unrelated until /api/ai/config returns 200.';
+  }
+  if (kind === 'health') {
+    return 'The API host did not pass /health. Check VOCA_API_URL and that the backend container is up.';
+  }
+  if (kind === 'usage') {
+    return '';
+  }
+  return 'On Coolify backend check AI_PROVIDER, AI_API_KEY (or OPENCODE_API_KEY), AI_MODEL=mimo-v2.5, then redeploy.';
+}
 
 export function classifyConfigBody(body) {
   const config = body?.config;

@@ -5,7 +5,7 @@
  * or by calling the live API (proves the running container, not just a local .env).
  *
  * Remote (recommended after deploy — uses Coolify's process env):
- *   VOCA_ACCESS_TOKEN='<Bearer from browser after login>' \
+ *   VOCA_ACCESS_TOKEN='<Supabase JWT eyJ… from browser after login>' \
  *     node scripts/check-ai-service.js --remote
  *
  *   VOCA_EMAIL=you@example.com VOCA_PASSWORD='...' \
@@ -36,6 +36,8 @@ import {
   classifyChatCompletionBody,
   classifyConfigBody,
   classifyTestConnectionBody,
+  describeAccessToken,
+  hintForProbeFailure,
 } from './aiServiceProbe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +87,8 @@ function printHelp() {
   console.log(`Usage: node scripts/check-ai-service.js [--remote|--direct] [options]
 
 Remote (live Coolify API):
-  VOCA_ACCESS_TOKEN   Supabase access JWT (Network tab → Authorization: Bearer …)
+  VOCA_ACCESS_TOKEN   Supabase session JWT from DevTools after login (starts with eyJ)
+                      Not AI_API_KEY (sk-…). Use --direct to test the API key.
   VOCA_EMAIL / VOCA_PASSWORD  Sign in instead of a token
   VOCA_API_URL        Default https://voca-api.kenchange.com
   SUPABASE_URL / SUPABASE_ANON_KEY  Or VITE_SUPABASE_* from frontend/.env
@@ -107,9 +110,12 @@ function maskSecret(value) {
   return `${s.slice(0, 4)}…${s.slice(-4)} (len=${s.length})`;
 }
 
-function fail(message) {
+let lastFailKind = 'ai';
+
+function fail(message, kind = 'ai') {
   console.error(`FAIL  ${message}`);
   process.exitCode = 1;
+  lastFailKind = kind;
 }
 
 function ok(message) {
@@ -138,7 +144,15 @@ async function jsonRequest(url, options = {}) {
 
 async function resolveAccessToken() {
   const existing = String(process.env.VOCA_ACCESS_TOKEN || '').trim();
-  if (existing) return existing;
+  if (existing) {
+    const described = describeAccessToken(existing);
+    if (!described.ok) {
+      const err = new Error(described.reason);
+      err.kind = 'auth';
+      throw err;
+    }
+    return existing;
+  }
 
   const email = String(process.env.VOCA_EMAIL || '').trim();
   const password = process.env.VOCA_PASSWORD || '';
@@ -175,7 +189,7 @@ async function runRemote(options) {
 
   const health = await jsonRequest(`${apiBase}/health`);
   if (!health.ok || health.body?.status !== 'ok') {
-    fail(`/health → ${health.status} ${JSON.stringify(health.body)}`);
+      fail(`/health → ${health.status} ${JSON.stringify(health.body)}`, 'health');
     return;
   }
   ok(`/health ${health.body.timestamp || ''}`);
@@ -184,11 +198,11 @@ async function runRemote(options) {
   try {
     token = await resolveAccessToken();
   } catch (err) {
-    fail(`auth: ${err.message}`);
+    fail(`auth: ${err.message}`, err.kind || 'auth');
     return;
   }
   if (!token) {
-    fail('set VOCA_ACCESS_TOKEN or VOCA_EMAIL + VOCA_PASSWORD (AI routes require a logged-in user)');
+    fail('set VOCA_ACCESS_TOKEN (JWT eyJ…) or VOCA_EMAIL + VOCA_PASSWORD — not AI_API_KEY', 'auth');
     return;
   }
   ok('got access token');
@@ -197,7 +211,10 @@ async function runRemote(options) {
 
   const configRes = await jsonRequest(`${apiBase}/api/ai/config`, { headers: auth });
   if (configRes.status === 401) {
-    fail('/api/ai/config → 401 (token rejected)');
+    fail(
+      '/api/ai/config → 401. The session JWT was rejected (expired or not a Magic English login). This is not an AI key check.',
+      'auth'
+    );
     return;
   }
   const configClass = classifyConfigBody(configRes.body);
@@ -304,7 +321,7 @@ async function main() {
     else if (process.env.AI_API_KEY || process.env.OPENCODE_API_KEY) options.direct = true;
     else {
       printHelp();
-      fail('pass --remote (with token/email) or --direct (with AI_API_KEY)');
+      fail('pass --remote (with a login JWT or email) or --direct (with AI_API_KEY)', 'usage');
       return;
     }
   }
@@ -313,7 +330,8 @@ async function main() {
   if (options.direct) await runDirect(options);
 
   if (process.exitCode === 1) {
-    console.error('\nAI probe failed. On Coolify backend check AI_PROVIDER, AI_API_KEY (or OPENCODE_API_KEY), AI_MODEL=mimo-v2.5, then redeploy.');
+    const hint = hintForProbeFailure(lastFailKind);
+    if (hint) console.error(`\n${hint}`);
     process.exit(1);
   }
   console.log('\nAI probe passed.');
