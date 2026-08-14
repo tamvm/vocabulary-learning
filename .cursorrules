@@ -57,8 +57,9 @@ docs/                   # setup, CI runner, deploy notes
 ### Code Style
 - **No TypeScript** — use JavaScript (`.js` / `.jsx`) matching the repo
 - Match existing Express + React/Vite + Tailwind patterns
-- Prefer small, explicit fixes over broad refactors
+- Prefer small, explicit fixes over broad refactors (Karpathy: surgical changes — every line traces to the request)
 - Don't remove broken code — fix it or flag it
+- Agent behavior: `.cursor/rules/karpathy-guidelines.mdc` + `engineering-discipline.mdc` (always-on)
 
 ### Database / migrations
 - Schema changes go through SQL under `backend/sql/` (and/or `supabase/`) with safe guards (`IF NOT EXISTS` where applicable)
@@ -97,3 +98,4 @@ docs/                   # setup, CI runner, deploy notes
 - Node.js 20+ (see `.nvmrc`)
 - Local: `npm run install:deps && npm run dev` (frontend ~3002, backend ~3012)
 - Cursor project rules/skills under `.cursor/` are authoritative for agents — do **not** treat root `CLAUDE.md` or `.claude/` kit docs as the source of truth for this repo’s workflow
+- Karpathy guidelines: `.cursor/rules/karpathy-guidelines.mdc` and `.cursor/skills/karpathy-guidelines/` (not a root `CLAUDE.md`)
