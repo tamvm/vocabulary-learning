@@ -128,10 +128,11 @@ function StepVocab({
       <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 mb-6">
         <button
           onClick={onBack}
-          className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-          title="Back"
+          className="flex items-center gap-1.5 px-2 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition text-sm font-medium text-gray-600 dark:text-gray-300"
+          title="All videos"
         >
           <ChevronLeft className="w-5 h-5" />
+          <span className="hidden sm:inline">All videos</span>
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="font-semibold text-gray-900 dark:text-white truncate">
@@ -522,14 +523,23 @@ function StepQuiz({
   return (
     <div className="max-w-2xl mx-auto">
       {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="mb-4 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back to study
-        </button>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            All videos
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            Back to study
+          </button>
+        </div>
       )}
       {/* Progress bar */}
       <div className="mb-6">
@@ -1207,6 +1217,9 @@ export default function Learn() {
 
   // ── Reset ────────────────────────────────────────────
   const handleRetry = () => {
+    if (lessonId) {
+      persistProgress(lessonId, { currentStep: step });
+    }
     setStep(STEPS.URL);
     setVideoInfo(null);
     setVocabulary([]);
@@ -1257,7 +1270,7 @@ export default function Learn() {
 
   // ── Step indicator ───────────────────────────────────
   const steps = [
-    { num: 1, label: 'Video', active: step >= STEPS.URL, current: step === STEPS.URL },
+    { num: 1, label: 'Videos', active: step >= STEPS.URL, current: step === STEPS.URL },
     { num: 2, label: 'Vocabulary', active: step >= STEPS.VOCAB, current: step === STEPS.VOCAB },
     { num: 3, label: 'Study', active: step >= STEPS.STUDY, current: step === STEPS.STUDY },
     { num: 4, label: 'Quiz', active: step >= STEPS.QUIZ, current: step === STEPS.QUIZ },
@@ -1370,10 +1383,7 @@ export default function Learn() {
             summary={summary}
             studyWords={studyWords}
             vocabulary={vocabulary}
-            onBack={() => {
-              setStep(STEPS.VOCAB);
-              persistProgress(lessonId, { currentStep: STEPS.VOCAB });
-            }}
+            onBack={handleRetry}
             onContinueQuiz={handleContinueToQuiz}
             onAddStudyWord={handleAddStudyWord}
             onGenerateHighlights={() => generateHighlights({ auto: false })}

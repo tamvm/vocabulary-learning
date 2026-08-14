@@ -222,9 +222,60 @@ export default function StepUrl({
           Learn from YouTube
         </h1>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Paste a URL to start, or reopen any saved video anytime
+          Start a new video, or reopen one you already saved
         </p>
       </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+        <div>
+          <label htmlFor="videoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            {(history || []).length ? 'Start another video' : 'YouTube Video URL'}
+          </label>
+          <input
+            id="videoUrl"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
+            disabled={loading}
+            autoFocus
+          />
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading || !url.trim() || historyLoading}
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Extracting transcript...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5" />
+              {(history || []).length ? 'Start this video' : 'Extract Vocabulary'}
+            </>
+          )}
+        </button>
+      </form>
+
+      {loading && (
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            This may take 30-60 seconds for long videos...
+          </div>
+        </div>
+      )}
 
       {!needle && unfinished && (
         <div className="mb-6 p-4 rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20">
@@ -280,57 +331,6 @@ export default function StepUrl({
                 )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="videoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            YouTube Video URL
-          </label>
-          <input
-            id="videoUrl"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
-            disabled={loading}
-            autoFocus
-          />
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-            disabled={loading || !url.trim() || historyLoading}
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Extracting transcript...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5" />
-              Extract Vocabulary
-            </>
-          )}
-        </button>
-      </form>
-
-      {loading && (
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            This may take 30-60 seconds for long videos...
           </div>
         </div>
       )}
