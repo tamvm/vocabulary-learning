@@ -5,6 +5,10 @@ import {
   normalizeLessonSummary,
   extractLessonSummaryRaw,
 } from './lessonSummaryNormalize.js';
+import {
+  configurationError,
+  createPublicAiError,
+} from './aiConfig.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
@@ -96,6 +100,18 @@ class AIService {
       model: configuredModel,
       localHost: process.env.OLLAMA_LOCAL_HOST || 'http://localhost:11434',
     };
+  }
+
+  configurationError() {
+    return configurationError({
+      provider: this.config.provider,
+      apiKey: this.config.apiKey,
+      knownProviders: new Set(Object.keys(this.providers)),
+    });
+  }
+
+  isConfigured() {
+    return !this.configurationError();
   }
 
   async httpRequest(url, options = {}) {
@@ -197,13 +213,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
         console.error('Free dictionary fallback failed:', dictError);
       }
 
-      const cause = error?.message || 'unknown error';
-      const unavailable = new Error(
-        `AI service unavailable (${cause}). Word lookup failed — try again shortly.`
-      );
-      unavailable.code = 'AI_UNAVAILABLE';
-      unavailable.cause = error;
-      throw unavailable;
+      throw createPublicAiError(error);
     }
   }
 
@@ -770,7 +780,7 @@ Provide only valid JSON without additional text.`;
       this.config.provider === 'opencode-go'
     ) {
       if (!this.config.apiKey) {
-        throw new Error('API key is required for this provider');
+        throw createPublicAiError(new Error('API key is required for this provider'));
       }
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }

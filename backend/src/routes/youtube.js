@@ -13,6 +13,7 @@ import {
   sampleTranscriptForAnalysis,
   capCues,
 } from '../services/youtubeAnalyzeHelpers.js';
+import { publicAiFailure, createPublicAiError } from '../services/aiConfig.js';
 const router = express.Router();
 
 const CHAPTER_MIN_DURATION_SEC = 8 * 60; // AI chapters if no YT chapters and long enough
@@ -95,6 +96,14 @@ router.post('/analyze', async (req, res, next) => {
     }
 
     const { videoUrl, lessonId: requestedLessonId } = value;
+
+    const aiConfigError = aiService.configurationError();
+    if (aiConfigError) {
+      return res.status(503).json({
+        error: 'ai_not_configured',
+        message: aiConfigError,
+      });
+    }
 
     let userCefrLevel = 'B2';
     try {
@@ -180,6 +189,7 @@ router.post('/analyze', async (req, res, next) => {
     ]);
 
     let vocabulary = [];
+    const warnings = [];
     if (vocabSettled.status === 'fulfilled') {
       vocabulary = (vocabSettled.value.vocabulary || []).map((item) => ({
         ...item,
@@ -187,7 +197,9 @@ router.post('/analyze', async (req, res, next) => {
         isLearned: learnedWords.has(item.word.toLowerCase()),
       }));
     } else {
+      const mapped = publicAiFailure(vocabSettled.reason);
       console.warn('Vocabulary analysis failed:', vocabSettled.reason?.message);
+      warnings.push(`Vocabulary: ${mapped.message}`);
     }
 
     let summary = '';
@@ -197,7 +209,9 @@ router.post('/analyze', async (req, res, next) => {
         chapters = normalizeChapters(summarySettled.value.chapters);
       }
     } else {
+      const mapped = publicAiFailure(summarySettled.reason);
       console.warn('Summary/chapter generation failed:', summarySettled.reason?.message);
+      warnings.push(`Highlights: ${mapped.message}`);
     }
 
     let lessonId = null;
@@ -314,6 +328,7 @@ router.post('/analyze', async (req, res, next) => {
       knownCount: vocabulary.filter((v) => v.isKnown).length,
       learnedCount: vocabulary.filter((v) => v.isLearned && !v.isKnown).length,
       newCount: vocabulary.filter((v) => !v.isKnown && !v.isLearned).length,
+      warnings,
     });
   } catch (error) {
     console.error('YouTube analyze error:', error);
@@ -337,6 +352,14 @@ router.post('/quiz', async (req, res, next) => {
       vocabularyWords = [],
       vocabularyWordIds = [],
     } = value;
+
+    const aiConfigError = aiService.configurationError();
+    if (aiConfigError) {
+      return res.status(503).json({
+        error: 'ai_not_configured',
+        message: aiConfigError,
+      });
+    }
 
     let content = null;
     let videoId = youtubeTranscriptService.extractVideoId(videoUrl);
@@ -403,12 +426,17 @@ router.post('/quiz', async (req, res, next) => {
     }
 
     console.log(`🧠 Generating ${questionCount} mixed quiz questions...`);
-    const validatedQuestions = await aiService.generateVideoMixedQuiz({
-      transcript: content,
-      userCefrLevel,
-      questionCount,
-      vocabularyWords: vocabWords,
-    });
+    let validatedQuestions;
+    try {
+      validatedQuestions = await aiService.generateVideoMixedQuiz({
+        transcript: content,
+        userCefrLevel,
+        questionCount,
+        vocabularyWords: vocabWords,
+      });
+    } catch (aiErr) {
+      throw createPublicAiError(aiErr);
+    }
 
     try {
       const quizPatch = {
@@ -672,6 +700,14 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
       return next(idError);
     }
 
+    const aiConfigError = aiService.configurationError();
+    if (aiConfigError) {
+      return res.status(503).json({
+        error: 'ai_not_configured',
+        message: aiConfigError,
+      });
+    }
+
     const { data: lesson, error } = await req.supabase
       .from('video_lessons')
       .select(
@@ -704,13 +740,18 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
     );
 
     console.log(`📝 Generating highlights for lesson ${lessonId}...`);
-    const result = await aiService.summarizeAndChapter({
-      transcript: summaryText,
-      title: lesson.title || '',
-      durationSeconds: lesson.duration_seconds,
-      existingChapters: existingChapters.length ? existingChapters : null,
-      needChapters: existingChapters.length === 0,
-    });
+    let result;
+    try {
+      result = await aiService.summarizeAndChapter({
+        transcript: summaryText,
+        title: lesson.title || '',
+        durationSeconds: lesson.duration_seconds,
+        existingChapters: existingChapters.length ? existingChapters : null,
+        needChapters: existingChapters.length === 0,
+      });
+    } catch (aiErr) {
+      throw createPublicAiError(aiErr);
+    }
 
     const summary = result.summary || '';
     const chapters = result.chapters?.length
