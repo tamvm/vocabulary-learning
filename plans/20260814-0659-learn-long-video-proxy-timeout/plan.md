@@ -7,7 +7,9 @@
 
 Pasting a long YouTube URL on `/learn` dies as a dropped connection. Copy blames highlights because `apiErrorMessage` maps every Axios Network Error to that string.
 
-Hard limit: Cloudflare/cloudflared ~**100s**. Analyze still stacks Transcript24 + vocab + `summarizeAndChapter` (default **45s + 60s retry**, chapters on for long videos). Frontend waits **180s**. PR #32 only capped the **sync** highlights route.
+**Confirmed:** `POST /api/youtube/lessons/:id/highlights` on production returns **502 Bad Gateway**. That is the proxy killing the **sync** AI hold — not an Express `504 highlights_timeout` JSON body. PR #32’s 80s route timeout is **too long** for the live gateway (or the origin dies first). Frontend 180s wait cannot help.
+
+Analyze still stacks Transcript24 + vocab + `summarizeAndChapter` (default **45s + 60s retry**). Same 502 class.
 
 ## What exists / minimum / complexity
 

@@ -7,6 +7,8 @@
 
 Generating highlights never holds the Cloudflare request. Slow models can take minutes. UI stays on Vocab/Study.
 
+**Evidence:** production `POST /lessons/:id/highlights` returns **502**, not `{ error: 'highlights_timeout' }`. The gateway wins the race against the 80s Express cap. Kick must return in **&lt;2s**.
+
 ## Design (KISS — no Redis)
 
 ```

@@ -4,11 +4,14 @@ Linear: [TOM-112](https://linear.app/timtam-wp/issue/TOM-112/learn-long-video-pa
 
 ## User-visible failure
 
-Paste long YouTube URL on `/learn` → Axios `Network Error` (no HTTP body) → `apiErrorMessage()` always says:
+Two client shapes, same cause:
 
-> The connection was interrupted before the server finished. Generating highlights can hit a proxy timeout — please try again.
+1. Browser Axios **Network Error** (no body) → `apiErrorMessage()` says the highlights/proxy copy (`frontend/src/lib/aiErrors.js`). That string is **not highlights-specific**.
+2. **Confirmed 2026-08-14:** `POST https://voca-api.kenchange.com/api/youtube/lessons/{id}/highlights` with `{}` returns **502** (gateway). Axios interceptor maps 502/504 to “server took too long / gateway timeout” when a body exists.
 
-That string is **not highlights-specific**. Any dropped socket on Learn (analyze, highlights, quiz) maps to it. `frontend/src/lib/aiErrors.js`.
+**502 (not Express 504 JSON `highlights_timeout`)** means Cloudflare/cloudflared/Coolify cut the origin **before** `withTimeout(80s)` could write JSON. The live proxy budget is **≤ Express’s 80s cap** (often ~60s Traefik / ~100s CF; 502 = origin dropped or CF origin-fail). Tightening Express timeouts only helps if we go well under that; holding the LLM on this POST cannot be made reliable.
+
+Do not replay production curls with user JWTs. Rotate the session if a token was pasted into chat.
 
 ## Proxy budget (hard)
 
