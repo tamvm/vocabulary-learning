@@ -171,6 +171,7 @@ router.post('/analyze', async (req, res, next) => {
       }),
       aiService.summarizeAndChapter({
         transcript: summaryText,
+        title: title || videoInfo?.title || '',
         durationSeconds,
         existingChapters: chapters.length ? chapters : null,
         needChapters: needAiChapters,
