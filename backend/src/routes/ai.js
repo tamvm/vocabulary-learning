@@ -119,6 +119,12 @@ router.post('/analyze-word', async (req, res, next) => {
       ...(savedWord && { savedWord }),
     });
   } catch (error) {
+    if (error?.code === 'AI_UNAVAILABLE' || /AI service unavailable/i.test(error?.message || '')) {
+      return res.status(503).json({
+        error: 'ai_unavailable',
+        message: error.message || 'AI service unavailable',
+      });
+    }
     next(error);
   }
 });

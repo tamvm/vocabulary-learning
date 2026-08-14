@@ -1,6 +1,53 @@
 import https from 'https';
 import http from 'http';
 
+/**
+ * Map Free Dictionary API entry → app word-analysis shape.
+ * Exported for unit tests.
+ */
+export function mapFreeDictionaryEntry(entry, fallbackWord = '') {
+  if (!entry || typeof entry !== 'object') return null;
+
+  const meanings = Array.isArray(entry.meanings) ? entry.meanings : [];
+  const meaning = meanings[0] || {};
+  const definitions = Array.isArray(meaning.definitions) ? meaning.definitions : [];
+  const def = definitions[0] || {};
+  const definition = typeof def.definition === 'string' ? def.definition.trim() : '';
+  if (!definition) return null;
+
+  const phoneticFromList = Array.isArray(entry.phonetics)
+    ? entry.phonetics.find((p) => p?.text)?.text
+    : '';
+  const ipaRaw = entry.phonetic || phoneticFromList || '';
+  const ipaPronunciation = String(ipaRaw).replace(/^\/|\/$/g, '').trim();
+
+  const synonymSet = new Set();
+  for (const m of meanings) {
+    for (const s of m.synonyms || []) {
+      if (typeof s === 'string' && s.trim()) synonymSet.add(s.trim());
+    }
+    for (const d of m.definitions || []) {
+      for (const s of d.synonyms || []) {
+        if (typeof s === 'string' && s.trim()) synonymSet.add(s.trim());
+      }
+    }
+  }
+
+  return {
+    word: entry.word || fallbackWord,
+    definition,
+    wordType: meaning.partOfSpeech || '',
+    cefrLevel: '',
+    ipaPronunciation,
+    exampleSentence: typeof def.example === 'string' ? def.example : '',
+    notes: 'Definition from Free Dictionary (AI unavailable)',
+    tags: ['dictionary'],
+    vietnameseTranslation: '',
+    synonyms: [...synonymSet].slice(0, 8).join(', '),
+    source: 'dictionary',
+  };
+}
+
 class AIService {
   constructor() {
     this.providers = {
@@ -119,20 +166,57 @@ Ensure the response is valid JSON only, without any additional text or explanati
     } catch (error) {
       console.error('AI word analysis error:', error);
 
-      // Provide a basic fallback response when AI service is unavailable
-      return {
-        word: word,
-        definition: "Unable to provide definition - AI service unavailable",
-        wordType: "unknown",
-        cefrLevel: "Unknown",
-        ipaPronunciation: "",
-        exampleSentence: `Example sentence with "${word}".`,
-        notes: "AI analysis temporarily unavailable. Please check your AI service configuration.",
-        tags: ["fallback"],
-        vietnameseTranslation: "",
-        synonyms: ""
-      };
+      // Prefer a real dictionary entry over a misleading stub when AI is down
+      try {
+        const dictionary = await this.lookupFreeDictionary(word);
+        if (dictionary?.definition) {
+          return dictionary;
+        }
+      } catch (dictError) {
+        console.error('Free dictionary fallback failed:', dictError);
+      }
+
+      const unavailable = new Error(
+        'AI service unavailable. Word lookup failed — try again shortly.'
+      );
+      unavailable.code = 'AI_UNAVAILABLE';
+      throw unavailable;
     }
+  }
+
+  /**
+   * Public dictionary fallback (no API key). Used when the configured LLM fails.
+   * @param {string} word
+   * @returns {Promise<object|null>}
+   */
+  async lookupFreeDictionary(word) {
+    const cleaned = String(word || '').trim().toLowerCase();
+    if (!cleaned || !/^[a-z][a-z'-]*$/i.test(cleaned)) {
+      return null;
+    }
+
+    const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleaned)}`;
+    const response = await this.httpRequest(url, {
+      method: 'GET',
+      timeout: 12000,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    let entries;
+    try {
+      entries = await response.json();
+    } catch (_) {
+      return null;
+    }
+
+    if (!Array.isArray(entries) || !entries.length) {
+      return null;
+    }
+
+    return mapFreeDictionaryEntry(entries[0], cleaned);
   }
 
   /**

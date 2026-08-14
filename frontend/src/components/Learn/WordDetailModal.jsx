@@ -173,7 +173,11 @@ export default function WordDetailModal({
               <button
                 type="button"
                 onClick={onAdd}
-                disabled={adding || !wordData?.definition}
+                disabled={
+                  adding ||
+                  !wordData?.definition ||
+                  isUnavailableAnalysis(wordData)
+                }
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white transition"
               >
                 {adding ? (
@@ -215,5 +219,24 @@ export function normalizeWordDetail(raw, fallbackWord = '') {
     synonyms: raw.synonyms || '',
     notes: raw.notes || '',
     tags: raw.tags || [],
+    source: raw.source || '',
   };
+}
+
+/** True for the old AI failure stub (or empty definitions). */
+export function isUnavailableAnalysis(analysis) {
+  if (!analysis || typeof analysis !== 'object') return true;
+  const definition = String(analysis.definition || '');
+  const notes = String(analysis.notes || '');
+  if (!definition.trim()) return true;
+  if (/AI service unavailable/i.test(definition)) return true;
+  if (/AI analysis temporarily unavailable/i.test(notes)) return true;
+  if (
+    Array.isArray(analysis.tags) &&
+    analysis.tags.includes('fallback') &&
+    /Unable to provide definition/i.test(definition)
+  ) {
+    return true;
+  }
+  return false;
 }
