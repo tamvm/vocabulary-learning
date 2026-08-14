@@ -4,13 +4,11 @@ import { displaySummary } from '@/lib/lessonSummary';
 
 export default function LessonSummary({
   summary = '',
-  cues = [],
   defaultOpen = true,
   className = '',
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { text, source } = displaySummary(summary, cues);
-  const title = source === 'excerpt' ? 'Summary (from transcript)' : 'Summary';
+  const { text, items, source } = displaySummary(summary);
 
   return (
     <div
@@ -24,7 +22,7 @@ export default function LessonSummary({
       >
         <BookOpen className="w-4 h-4 text-primary-500 flex-shrink-0" />
         <span className="flex-1 text-sm font-semibold text-gray-900 dark:text-white">
-          {title}
+          Highlights
         </span>
         {source === 'empty' && (
           <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
@@ -39,14 +37,19 @@ export default function LessonSummary({
       </button>
       {open && (
         <div className="px-4 pb-4 -mt-1">
-          {text ? (
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 font-sans">
-              {text}
-            </pre>
+          {items.length > 1 ? (
+            <ul className="list-disc pl-5 space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
+              {items.map((item, index) => (
+                <li key={`${index}-${item.slice(0, 24)}`}>{item}</li>
+              ))}
+            </ul>
+          ) : text ? (
+            <p className="text-sm text-gray-700 dark:text-gray-300">{text}</p>
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No summary yet for this video. You can still study with the
-              transcript and new words.
+              No highlights yet for this video. Re-analyze it to generate
+              bullet-point takeaways, or study with the transcript and new
+              words.
             </p>
           )}
         </div>

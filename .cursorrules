@@ -57,8 +57,9 @@ docs/                   # setup, CI runner, deploy notes
 ### Code Style
 - **No TypeScript** — use JavaScript (`.js` / `.jsx`) matching the repo
 - Match existing Express + React/Vite + Tailwind patterns
-- Prefer small, explicit fixes over broad refactors
+- Prefer small, explicit fixes over broad refactors (Karpathy: surgical changes — every line traces to the request)
 - Don't remove broken code — fix it or flag it
+- Agent behavior: `.cursor/rules/karpathy-guidelines.mdc` + `engineering-discipline.mdc` (always-on)
 
 ### Database / migrations
 - Schema changes go through SQL under `backend/sql/` (and/or `supabase/`) with safe guards (`IF NOT EXISTS` where applicable)
@@ -72,7 +73,7 @@ docs/                   # setup, CI runner, deploy notes
 - CI: self-hosted runner — see `docs/ci-self-hosted-runner.md`
 
 ### Git & Deployment
-- PR workflow (worktree-per-PR, babysit until `[ready]`, merge only on ask, deploy verify, worktree cleanup): see `.cursor/rules/pr-workflow.mdc` and `.cursor/skills/ve-pr-workflow/SKILL.md`
+- PR workflow (worktree-per-PR, babysit until `[ready]`, merge only on ask, worktree cleanup; **no production smoke**, no deploy babysit unless asked): see `.cursor/rules/pr-workflow.mdc` and `.cursor/skills/ve-pr-workflow/SKILL.md`
 - Worktrees live under `../vl-worktrees/pr-<N>`; session title `vl-<PR#>` after PR exists
 - Merge into **main** (no squash)
 - Conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, `ci:`
@@ -80,8 +81,9 @@ docs/                   # setup, CI runner, deploy notes
 - Branch hazard: always verify current branch before git ops
 - **PRs — always open / ready for review (never draft)** unless the user explicitly asks for a draft. `ManagePullRequest` `create_pr` must pass `draft: false`. Automation may create a draft — immediately `gh pr ready <N>` and verify `isDraft: false`
 - **PR reviews — fix or reply before `[ready]` and before merge (hard gate):** every review comment/thread (human or bot: Bugbot, Copilot, Kilo, Cursor Bugbot, etc.) must be either fixed in code or answered on GitHub explaining why it is not relevant. Inventory unresolved threads first. Do not mark `[ready]` or merge with unanswered reviews — not even if the user already asked to merge. Handle reviews, then merge.
-- Production: Coolify project id `i8luqt7n49kugwqwfbcyrfvl` — after CI on `main`/`master`, `coolify-deploy.yml` queues backend + frontend
+- Production: Coolify project id `i8luqt7n49kugwqwfbcyrfvl` — after CI on `main`/`master`, `coolify-deploy.yml` queues backend + frontend. Agents do **not** smoke-test production after merge.
 - Do not change Coolify env/secrets as part of routine deploy
+- Lean updates: skip extra subagents, CI/deploy poll loops, and local build/test on docs/rules-only changes (see PR workflow lean defaults)
 
 ### UI Changes
 - Preserve the existing Tailwind / app visual language unless the task redesigns it
@@ -97,3 +99,4 @@ docs/                   # setup, CI runner, deploy notes
 - Node.js 20+ (see `.nvmrc`)
 - Local: `npm run install:deps && npm run dev` (frontend ~3002, backend ~3012)
 - Cursor project rules/skills under `.cursor/` are authoritative for agents — do **not** treat root `CLAUDE.md` or `.claude/` kit docs as the source of truth for this repo’s workflow
+- Karpathy guidelines: `.cursor/rules/karpathy-guidelines.mdc` and `.cursor/skills/karpathy-guidelines/` (not a root `CLAUDE.md`)

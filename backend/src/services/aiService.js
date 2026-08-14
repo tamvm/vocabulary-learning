@@ -1,5 +1,9 @@
 import https from 'https';
 import http from 'http';
+import {
+  parseAiJsonObject,
+  normalizeLessonSummary,
+} from './lessonSummaryNormalize.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
@@ -955,6 +959,7 @@ Provide only valid JSON array without additional text.`;
    */
   async summarizeAndChapter({
     transcript,
+    title = '',
     durationSeconds = null,
     existingChapters = null,
     needChapters = true,
@@ -980,17 +985,23 @@ Each chapter: { "start": <seconds number>, "title": "<short title>" }
 - cover the whole video in order; first chapter usually starts at 0`
       : `Do NOT invent chapters. Return "chapters": [].`;
 
-    const prompt = `You are helping an English learner study a YouTube video.
+    const titleLine = title ? `Video title: ${title}\n` : '';
+    const prompt = `${titleLine}Duration (seconds): ${durationSeconds ?? 'unknown'}
 
-Duration (seconds): ${durationSeconds ?? 'unknown'}
+Write 5–8 HIGHLIGHT bullets of the video's CONTENT: topics discussed, claims, numbers, decisions, and takeaways.
 
-Create a concise study summary of the MAIN IDEAS (3–6 short bullet points as a single string with newlines, or a short paragraph + bullets).
+Hard rules:
+- summary must be a single string of markdown bullets, each line starting with "- "
+- paraphrase in clear English; NEVER copy captions, greetings, filler (um/uh), or speaker-turn markers (>>)
+- do not quote long dialogue
+- cover ideas from the whole transcript sample (start, middle, and end), not only the intro
+- skip chit-chat about sitting down / introducing the guest unless that is the whole video
 
 ${chapterInstructions}
 
 Return ONLY valid JSON:
 {
-  "summary": "...",
+  "summary": "- first highlight\\n- second highlight\\n- third highlight",
   "chapters": [ { "start": 0, "title": "Introduction" } ]
 }
 
@@ -1003,9 +1014,16 @@ ${truncatedTranscript}
       'chat/completions',
       {
         model: this.config.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 2000,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You write study notes for English learners. Output valid JSON only. Summaries are paraphrased bullet highlights, never a transcript.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 900,
       },
       { timeout: 45000 }
     );
@@ -1014,19 +1032,19 @@ ${truncatedTranscript}
       throw new Error('No response from AI service for summary');
     }
 
-    let content = response.choices[0].message.content;
-    content = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-
+    const content = response.choices[0].message.content;
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      parsed = parseAiJsonObject(content);
     } catch {
       console.error('Failed to parse summary response:', content);
       throw new Error('Invalid AI response format for summary');
     }
 
-    const summary =
-      typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const summary = normalizeLessonSummary(parsed.summary, truncatedTranscript);
+    if (!summary) {
+      console.warn('Rejected transcript-like or empty lesson summary');
+    }
 
     let chapters = hasExisting
       ? existingChapters.map((ch) => ({

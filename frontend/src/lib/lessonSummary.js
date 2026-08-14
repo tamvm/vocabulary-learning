@@ -1,27 +1,32 @@
 /**
- * Prefer the AI lesson summary; if it is missing, fall back to a short
- * transcript excerpt so Study always has readable context.
+ * Prefer a paraphrased AI lesson summary. Never show a caption dump.
  */
-export function displaySummary(summary, cues = []) {
+export function looksLikeTranscriptDump(text) {
+  if (!text || typeof text !== 'string') return false;
+  const summary = text.trim();
+  if (!summary) return false;
+  if (/>>/.test(summary)) return true;
+  const words = summary.split(/\s+/).filter(Boolean);
+  if (words.length >= 40) {
+    const fillers = summary.match(/\b(um+|uh+|erm+)\b/gi) || [];
+    if (fillers.length >= 2) return true;
+  }
+  return false;
+}
+
+export function parseSummaryBullets(text) {
+  if (!text || typeof text !== 'string') return [];
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim())
+    .filter(Boolean);
+}
+
+export function displaySummary(summary) {
   const text = typeof summary === 'string' ? summary.trim() : '';
-  if (text) {
-    return { text, source: 'ai' };
+  if (!text || looksLikeTranscriptDump(text)) {
+    return { text: '', items: [], source: 'empty' };
   }
-
-  const excerpt = (cues || [])
-    .map((cue) => (typeof cue?.text === 'string' ? cue.text.trim() : ''))
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!excerpt) {
-    return { text: '', source: 'empty' };
-  }
-
-  const maxChars = 500;
-  if (excerpt.length <= maxChars) {
-    return { text: excerpt, source: 'excerpt' };
-  }
-  return { text: `${excerpt.slice(0, maxChars).trim()}…`, source: 'excerpt' };
+  const items = parseSummaryBullets(text);
+  return { text, items, source: 'ai' };
 }

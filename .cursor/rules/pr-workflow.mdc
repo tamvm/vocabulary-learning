@@ -1,5 +1,5 @@
 ---
-description: Worktree-per-PR development workflow with CI babysit, deploy verify, and cleanup
+description: Worktree-per-PR development workflow with CI babysit, merge, and cleanup — no production smoke
 alwaysApply: true
 ---
 
@@ -28,7 +28,21 @@ For every fix or feature, follow this checklist. Details: `.cursor/skills/ve-pr-
    - **Other sessions:** rename to `vl-<PR#>` immediately after the PR exists.
 5. **Babysit** — Fix CI and **address every review** until all required checks are green; set PR title prefix `[ready]`. On every new push, **remove** `[ready]` first; only re-add it after checks are green again.
 6. **Wait** — Stop and wait for the user to review. Do **not** merge until the user explicitly asks.
-7. **Merge + deploy** — On merge request: **reviews first (hard gate)** — list unresolved GitHub review threads; if any are unanswered, **fix or reply, then stop** (do not merge “and fix reviews later”). Only when every thread is fixed or replied-to: merge (no squash) → verify CI then Coolify Deploy (project `i8luqt7n49kugwqwfbcyrfvl`) → smoke-test the app → **remove the worktree**.
+7. **Merge** — On merge request: **reviews first (hard gate)** — list unresolved GitHub review threads; if any are unanswered, **fix or reply, then stop** (do not merge “and fix reviews later”). Only when every thread is fixed or replied-to: merge (no squash) → **remove the worktree**. Do **not** production-smoke (no browser/curl of https://voca.kenchange.com). Do **not** babysit Coolify Deploy unless the user asks.
+
+## Lean defaults (speed / tokens)
+
+Skip these unless the user explicitly asks. They burn time and tokens on routine updates.
+
+- **No production smoke** — never open or curl production to “verify deploy”
+- **No deploy watch loop** — do not poll `gh run list`, Coolify UI, or wait for backend/frontend to go live after merge
+- **No extra subagents** — do not launch tester / reviewer / planner / docs-manager / browser agents for a normal fix or docs/rules change
+- **No CI poll loops** — check required checks once (or after a push); fix failures; do not sit in a watch-and-refresh loop
+- **Docs/rules-only PRs** — skip `npm test`, `npm run build`, frontend lint, and UI screenshots
+- **No drive-by reads** — do not re-read the full skill/docs tree or re-open the whole PR workflow on every small follow-up
+- **No invented verify** — do not add “just in case” browser tests, auth-flow checks, or mobile layout passes when the change is not UI
+
+Keep: worktree, conventional commits, open (non-draft) PR, review-thread gate, `[ready]` hygiene, merge only on ask, worktree cleanup.
 
 ## Review comments (mandatory)
 
@@ -58,3 +72,5 @@ Checklist before `[ready]` / merge:
 - Skip worktree cleanup after a successful merge
 - Force-push to `main` or skip hooks
 - Change Coolify env/secrets as part of routine deploy (explicit domain/CORS sync is `coolify-sync-domain.yml`)
+- Production-smoke the live app after merge (browser or curl)
+- Babysit Coolify Deploy or poll deploy workflows unless the user asks

@@ -8,6 +8,8 @@ alwaysApply: true
 Adapted from ClaudeKit Engineer (`/ck:cook`, `/ck:plan` scope-challenge, review/audit rules) for **this** Cursor agent.
 Does **not** replace `.cursorrules` or `ve-pr-workflow`. Those win on conflicts.
 
+**Also always-on:** `karpathy-guidelines.mdc` (think → simplicity → surgical diffs → goal-driven verify). Prefer that rule for diff hygiene and success-criteria loops; prefer this file for scope challenge, review/merge gates, and ClaudeKit exclusions.
+
 ## Challenge the user
 
 - Do **not** rubber-stamp requests. If a premise is wrong, incomplete, unsafe, or fights this repo, say so first.
@@ -35,9 +37,10 @@ Raise scope concerns once; after the user picks expansion / hold / reduction, re
 
 ## Verification before claims
 
-- No "tests pass", "fixed", "ready", or "deployed" without fresh command output (or browser evidence) in this turn.
+- No "tests pass", "fixed", "ready", or "deployed" without fresh command output in this turn. Do **not** use production browser/curl smoke as that evidence.
 - Words like "should", "probably", "looks good" are not verification.
 - For auth/AI/Supabase paths: exercise the real gate — do not claim safety from reading code alone.
+- Pair with Karpathy goal-driven loops: define verify steps before claiming done.
 
 ## Review feedback
 
@@ -53,5 +56,5 @@ Raise scope concerns once; after the user picks expansion / hold / reduction, re
 - Hard 200-line file limit
 - Ban on pragmatic stubs for external LLM calls in local verification
 - Generic assumptions that ignore Supabase RLS / Express middleware
-- Treating `.claude/` kit trees or a root `CLAUDE.md` as Cursor’s source of truth (use `.cursorrules` + `.cursor/` instead)
+- Treating `.claude/` kit trees or a root `CLAUDE.md` as Cursor’s source of truth (use `.cursorrules` + `.cursor/` instead — Karpathy content lives in `.cursor/rules/karpathy-guidelines.mdc`, not a root `CLAUDE.md`)
 - Vendoring the paid kit tree or `/ck:xia` port of entire skill packs
