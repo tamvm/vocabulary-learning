@@ -3,6 +3,7 @@ import http from 'http';
 import {
   parseAiJsonObject,
   normalizeLessonSummary,
+  extractLessonSummaryRaw,
 } from './lessonSummaryNormalize.js';
 
 class AIService {
@@ -871,30 +872,16 @@ Provide only valid JSON array without additional text.`;
   }
 
   /**
-   * Summarize a video transcript and optionally produce chapters.
+   * One AI pass for lesson highlights (and optional chapters).
    */
-  async summarizeAndChapter({
+  async requestLessonHighlights({
     transcript,
     title = '',
     durationSeconds = null,
-    existingChapters = null,
-    needChapters = true,
+    needChapters = false,
+    timeout = 45000,
   } = {}) {
-    if (!transcript || typeof transcript !== 'string') {
-      throw new Error('Transcript must be a non-empty string');
-    }
-
-    const maxChars = 14000;
-    const truncatedTranscript =
-      transcript.length > maxChars
-        ? transcript.substring(0, maxChars) + '\n[... transcript continues ...]'
-        : transcript;
-
-    const hasExisting =
-      Array.isArray(existingChapters) && existingChapters.length > 0;
-    const shouldChapter = needChapters && !hasExisting;
-
-    const chapterInstructions = shouldChapter
+    const chapterInstructions = needChapters
       ? `Also split the video into 3–8 logical chapters.
 Each chapter: { "start": <seconds number>, "title": "<short title>" }
 - start must be approximate seconds from the beginning
@@ -923,7 +910,7 @@ Return ONLY valid JSON:
 
 Transcript:
 """
-${truncatedTranscript}
+${transcript}
 """`;
 
     const response = await this.makeRequest(
@@ -941,7 +928,7 @@ ${truncatedTranscript}
         temperature: 0.2,
         max_tokens: 900,
       },
-      { timeout: 45000 }
+      { timeout }
     );
 
     if (!response.choices?.[0]) {
@@ -949,30 +936,52 @@ ${truncatedTranscript}
     }
 
     const content = response.choices[0].message.content;
-    let parsed;
     try {
-      parsed = parseAiJsonObject(content);
+      return parseAiJsonObject(content);
     } catch {
       console.error('Failed to parse summary response:', content);
       throw new Error('Invalid AI response format for summary');
     }
+  }
 
-    const summary = normalizeLessonSummary(parsed.summary, truncatedTranscript);
-    if (!summary) {
-      console.warn('Rejected transcript-like or empty lesson summary');
+  /**
+   * Summarize a video transcript and optionally produce chapters.
+   * Retries without chapters when the first pass is empty, a dump, or fails.
+   */
+  async summarizeAndChapter({
+    transcript,
+    title = '',
+    durationSeconds = null,
+    existingChapters = null,
+    needChapters = true,
+  } = {}) {
+    if (!transcript || typeof transcript !== 'string') {
+      throw new Error('Transcript must be a non-empty string');
     }
 
-    let chapters = hasExisting
-      ? existingChapters.map((ch) => ({
-          start: Number(ch.start) || 0,
-          end: ch.end != null ? Number(ch.end) : null,
-          title: ch.title || 'Chapter',
-          source: ch.source || 'youtube',
-        }))
-      : [];
+    const maxChars = 14000;
+    const truncatedTranscript =
+      transcript.length > maxChars
+        ? transcript.substring(0, maxChars) + '\n[... transcript continues ...]'
+        : transcript;
 
-    if (shouldChapter && Array.isArray(parsed.chapters)) {
-      chapters = parsed.chapters
+    const hasExisting =
+      Array.isArray(existingChapters) && existingChapters.length > 0;
+    const shouldChapter = needChapters && !hasExisting;
+
+    const mapExisting = () =>
+      hasExisting
+        ? existingChapters.map((ch) => ({
+            start: Number(ch.start) || 0,
+            end: ch.end != null ? Number(ch.end) : null,
+            title: ch.title || 'Chapter',
+            source: ch.source || 'youtube',
+          }))
+        : [];
+
+    const mapAiChapters = (parsed) => {
+      if (!shouldChapter || !Array.isArray(parsed?.chapters)) return [];
+      return parsed.chapters
         .filter((ch) => ch && (ch.title || ch.start != null))
         .map((ch) => ({
           start: Number(ch.start) || 0,
@@ -981,8 +990,50 @@ ${truncatedTranscript}
           source: 'ai',
         }))
         .sort((a, b) => a.start - b.start);
+    };
+
+    let parsed = null;
+    let summary = '';
+    try {
+      parsed = await this.requestLessonHighlights({
+        transcript: truncatedTranscript,
+        title,
+        durationSeconds,
+        needChapters: shouldChapter,
+        timeout: 45000,
+      });
+      summary = normalizeLessonSummary(
+        extractLessonSummaryRaw(parsed),
+        truncatedTranscript
+      );
+    } catch (err) {
+      console.warn('First highlights pass failed:', err.message);
     }
 
+    if (!summary) {
+      const retryTranscript =
+        truncatedTranscript.length > 8000
+          ? truncatedTranscript.slice(0, 8000) + '\n[... transcript continues ...]'
+          : truncatedTranscript;
+      console.warn('Retrying lesson highlights without chapters');
+      parsed = await this.requestLessonHighlights({
+        transcript: retryTranscript,
+        title,
+        durationSeconds,
+        needChapters: false,
+        timeout: 60000,
+      });
+      summary = normalizeLessonSummary(
+        extractLessonSummaryRaw(parsed),
+        retryTranscript
+      );
+    }
+
+    if (!summary) {
+      console.warn('Rejected transcript-like or empty lesson summary');
+    }
+
+    const chapters = hasExisting ? mapExisting() : mapAiChapters(parsed);
     return { summary, chapters };
   }
 

@@ -39,6 +39,11 @@ assertEqual(
   'real highlight is not a dump'
 );
 
+const bullets = displaySummary(
+  '- Tesla is scaling factory output.\n- Optimus is a humanoid robot.'
+);
+assertEqual(bullets.items.length, 2, 'two highlight bullets');
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

@@ -1,3 +1,5 @@
+import { looksLikeTranscriptDump } from './lessonSummaryNormalize.js';
+
 export const LEARN_STEPS = {
   URL: 1,
   VOCAB: 2,
@@ -106,7 +108,12 @@ export function hydrateLessonResponse(lesson) {
     questions: asArray(lesson.quiz_questions),
     quizAnswers: asAnswerMap(lesson.quiz_answers),
     cues: asArray(lesson.transcript_cues),
-    summary: lesson.summary || '',
+    summary: looksLikeTranscriptDump(
+      lesson.summary,
+      lesson.transcript_text || ''
+    )
+      ? ''
+      : lesson.summary || '',
     chapters: asArray(lesson.chapters),
     userCefrLevel: lesson.user_cefr_level || 'B2',
     currentStep,
