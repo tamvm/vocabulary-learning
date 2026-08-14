@@ -83,7 +83,7 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
     steps,
   };
 }
-export const VOCAB_SAMPLE_CHARS = 5000;
+export const VOCAB_SAMPLE_CHARS = 15000;
 export const SUMMARY_SAMPLE_CHARS = 12000;
 export const HIGHLIGHTS_JOB_FIRST_MS = 90000;
 export const HIGHLIGHTS_JOB_RETRY_MS = 60000;
@@ -171,12 +171,13 @@ async function defaultFetchTranscript(videoUrl) {
   });
 }
 
-async function defaultAnalyzeVocab(text, cefr) {
+async function defaultAnalyzeVocab(text, cefr, options = {}) {
   const { aiService } = await import('./aiService.js');
   return aiService.analyzeWebsiteContent(text, cefr, {
-    limit: 30,
-    chunksToProcess: 1,
+    limit: 24,
+    chunksToProcess: 3,
     chunkTimeout: VOCAB_TIMEOUT_MS,
+    preferRecall: Boolean(options.preferRecall),
   });
 }
 
@@ -266,7 +267,10 @@ export async function runLessonPreparePipeline({
     );
     let vocabulary = [];
     try {
-      const vocabResult = await analyzeVocab(vocabText, cefr);
+      let vocabResult = await analyzeVocab(vocabText, cefr);
+      if (!(vocabResult?.vocabulary || []).length) {
+        vocabResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
+      }
       const knownWords = new Set();
       const learnedWords = new Set();
       try {
@@ -286,6 +290,16 @@ export async function runLessonPreparePipeline({
       }));
     } catch (vocabErr) {
       console.warn('Vocabulary step failed:', vocabErr?.message);
+      try {
+        const retryResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
+        vocabulary = (retryResult?.vocabulary || []).map((item) => ({
+          ...item,
+          isKnown: false,
+          isLearned: false,
+        }));
+      } catch (retryErr) {
+        console.warn('Vocabulary retry failed:', retryErr?.message);
+      }
     }
     await patchLessonPrepare(supabase, userId, lessonId, {
       vocabulary_snapshot: vocabulary,
