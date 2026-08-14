@@ -65,14 +65,13 @@ class AIService {
       },
       'opencode': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        // deepseek-v4-flash is flaky on OpenCode Go (upstream drops / model-name bugs).
-        // Prefer a stable Go chat-completions model when AI_MODEL is unset.
-        defaultModel: 'kimi-k2.7-code',
+        // Prefer mimo-v2.5 on OpenCode Go when AI_MODEL is unset.
+        defaultModel: 'mimo-v2.5',
       },
       // Alias used in Coolify / other apps (e.g. LLM_PROVIDER=opencode-go)
       'opencode-go': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        defaultModel: 'kimi-k2.7-code',
+        defaultModel: 'mimo-v2.5',
       },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
@@ -184,7 +183,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
       }
 
       throw new Error('No response from AI service');
-      } catch (error) {
+    } catch (error) {
       console.error('AI word analysis error:', error);
 
       // Prefer a real dictionary entry over a misleading stub when AI is down

@@ -58,7 +58,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 AI_PROVIDER=opencode
 AI_API_KEY=...                 # OpenCode Go key (OPENCODE_API_KEY also accepted)
-AI_MODEL=kimi-k2.7-code        # prefer stable Go models; avoid deepseek-v4-flash
+AI_MODEL=mimo-v2.5
 # AI_PROVIDER=opencode-go is accepted as an alias for the same endpoint
 
 JWT_SECRET=...   # strong random value
