@@ -283,7 +283,8 @@ function StepVocab({
 
         {vocabulary.length === 0 && (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            No vocabulary found for your level. Try a different video.
+            No word list from this transcript yet. Continue to Study and tap any
+            word to look it up and add it.
           </div>
         )}
       </div>
@@ -1044,7 +1045,10 @@ export default function Learn() {
       if (data.prepareError && data.prepareStatus !== 'failed') {
         toast.error(data.prepareError);
       } else if (totalFound === 0) {
-        toast('No new vocabulary found for your level. Try another video.', { icon: 'ℹ️' });
+        toast(
+          'No word list yet — continue to Study and tap words in the transcript to add them.',
+          { icon: 'ℹ️' }
+        );
       } else {
         toast.success(`Found ${totalFound} vocabulary items`);
       }

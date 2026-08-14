@@ -1,6 +1,7 @@
 import https from 'https';
 import http from 'http';
 import {
+  parseAiJsonArray,
   parseAiJsonObject,
   normalizeLessonSummary,
   extractLessonSummaryRaw,
@@ -267,24 +268,33 @@ Ensure the response is valid JSON only, without any additional text or explanati
    * @private
    */
   async analyzeContentChunk(contentChunk, userCefrLevel, itemsPerChunk, options = {}) {
-    const prompt = `You are an experienced English teacher.
-My English level: ${userCefrLevel} (CEFR).
-Analyze the content below and extract terms or expressions I probably don't know, to help me expand my English vocabulary.
+    const target = Math.max(8, Math.min(Number(itemsPerChunk) || 12, 20));
+    const preferRecall = Boolean(options.preferRecall);
+    const recallHint = preferRecall
+      ? `The previous pass returned too few items. Extract ${target} items even if they look ordinary — phrasal verbs, collocations, and topic words from this transcript.`
+      : `Never return an empty array when the content contains English. The app already marks known/saved words — extracting useful items is better than returning none.`;
 
-🎯 Extraction Rules
-Include: idioms, phrasal verbs, advanced/uncommon vocabulary, cultural references, technical terms
-Exclude: proper names (people, places, brands, organizations)
+    const prompt = `You are an experienced English teacher extracting vocabulary from a video transcript.
+Learner CEFR level: ${userCefrLevel}.
 
-✅ Focus on quality over quantity — include only useful and memorable items.
-🪄 Make translations natural in Vietnamese, and sentences practical for memory.
-🔤 Use standard British IPA transcription (e.g., /ˈvɒk.jʊ.lə.ri/).
+Return ${target} useful English words or short phrases that appear in (or are clearly used in) this transcript.
 
-Content to analyze:
+Include:
+- Phrasal verbs, collocations, idioms
+- Topic / technical terms
+- Words a ${userCefrLevel} listener would likely pause on (at, above, or slightly below their level)
+
+Exclude only isolated proper names with no learning value (person names, brands) unless they are used as terms.
+
+Vietnamese translations should be natural. Use British IPA (e.g. /ˈvɒk.jʊ.lə.ri/).
+${recallHint}
+
+Content:
 """
 ${contentChunk}
 """
 
-Return a JSON array of vocabulary items (maximum ${itemsPerChunk} items), each with:
+Return only a JSON array of objects (no markdown), each with:
 {
   "word": "vocabulary item or phrase",
   "definition": "clear English definition",
@@ -296,9 +306,7 @@ Return a JSON array of vocabulary items (maximum ${itemsPerChunk} items), each w
   "synonyms": "comma-separated list of synonyms",
   "notes": "usage notes or cultural context if relevant",
   "tags": ["tag1", "tag2"]
-}
-
-Provide only valid JSON array without additional text. Focus on words that are challenging but learnable for a ${userCefrLevel} level student.`;
+}`;
 
     const response = await this.makeRequest('chat/completions', {
       model: this.config.model,
@@ -308,43 +316,34 @@ Provide only valid JSON array without additional text. Focus on words that are c
           content: prompt,
         },
       ],
-      temperature: 0.3,
-      max_tokens: 4000,
+      temperature: preferRecall ? 0.4 : 0.3,
+      max_tokens: 8000,
     }, {
       timeout: options.timeout || 120000,
     });
 
     if (response.choices && response.choices[0]) {
-      let content = response.choices[0].message.content;
-
-      // Clean up the response - remove markdown code blocks if present
-      content = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-
+      const content = response.choices[0].message.content;
       try {
-        const vocabulary = JSON.parse(content);
-
-        // Validate that it's an array
-        if (!Array.isArray(vocabulary)) {
-          throw new Error('Response is not an array');
-        }
-
-        // Validate each item
-        const validatedVocabulary = vocabulary
-          .map(item => ({
-            word: item.word || '',
-            definition: item.definition || '',
-            wordType: item.wordType || 'unknown',
-            cefrLevel: item.cefrLevel || 'B2',
-            ipaPronunciation: item.ipaPronunciation || '',
-            exampleSentence: item.exampleSentence || '',
-            vietnameseTranslation: item.vietnameseTranslation || '',
+        const vocabulary = parseAiJsonArray(content);
+        return vocabulary
+          .map((item) => ({
+            word: String(item.word || item.term || '').trim(),
+            definition: String(item.definition || item.meaning || '').trim(),
+            wordType: item.wordType || item.type || 'unknown',
+            cefrLevel: item.cefrLevel || item.level || 'B2',
+            ipaPronunciation: item.ipaPronunciation || item.ipa || '',
+            exampleSentence: item.exampleSentence || item.example || '',
+            vietnameseTranslation: item.vietnameseTranslation || item.translation || '',
             synonyms: item.synonyms || '',
             notes: item.notes || '',
-            tags: Array.isArray(item.tags) ? item.tags : []
+            tags: Array.isArray(item.tags) ? item.tags : [],
           }))
-          .filter(item => item.word && item.definition);
-
-        return validatedVocabulary;
+          .filter((item) => item.word)
+          .map((item) => ({
+            ...item,
+            definition: item.definition || `Used in this video: "${item.word}"`,
+          }));
       } catch (parseError) {
         console.error('Failed to parse AI response:', content);
         throw new Error('Invalid AI response format');
@@ -419,6 +418,7 @@ Provide only valid JSON array without additional text. Focus on words that are c
       chunksToProcess = 3,
       offset = 0,
       chunkTimeout = 120000,
+      preferRecall = false,
     } = options;
 
     if (!content || typeof content !== 'string') {
@@ -436,6 +436,7 @@ Provide only valid JSON array without additional text. Focus on words that are c
         console.log('📝 Content is small, using single-chunk analysis');
         const vocabulary = await this.analyzeContentChunk(content, userCefrLevel, limit, {
           timeout: chunkTimeout,
+          preferRecall,
         });
         return {
           vocabulary: vocabulary.slice(0, limit),
@@ -525,7 +526,7 @@ Provide only valid JSON array without additional text. Focus on words that are c
             chunk.trim(),
             userCefrLevel,
             itemsPerChunk,
-            { timeout: chunkTimeout }
+            { timeout: chunkTimeout, preferRecall }
           );
           results.push(chunkResult);
 
