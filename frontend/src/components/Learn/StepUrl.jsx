@@ -114,6 +114,7 @@ function SessionRow({
 export default function StepUrl({
   onSubmit,
   loading,
+  loadingLabel = 'Extracting transcript...',
   error,
   history,
   historyLoading,
@@ -245,7 +246,7 @@ export default function StepUrl({
           {loading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Extracting transcript...
+              {loadingLabel}
             </>
           ) : (
             <>
@@ -260,7 +261,7 @@ export default function StepUrl({
         <div className="mt-8 text-center">
           <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            This may take 30-60 seconds for long videos...
+            {loadingLabel} This stays on the server so the connection will not time out.
           </div>
         </div>
       )}

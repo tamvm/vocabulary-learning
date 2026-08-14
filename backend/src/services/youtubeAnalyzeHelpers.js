@@ -3,12 +3,9 @@
  * (Cloudflare/cloudflared ~100s). Long interviews otherwise 502.
  *
  * Axios reports a dropped proxy socket as "Network Error" (no HTTP status).
- * Highlight generation must finish or fail with JSON before this budget.
+ * Long AI (highlights) must run off the request path; do not hold this budget.
  */
 export const PROXY_REQUEST_BUDGET_MS = 100000;
-export const HIGHLIGHTS_ROUTE_TIMEOUT_MS = 80000;
-export const HIGHLIGHTS_FIRST_PASS_MS = 40000;
-export const HIGHLIGHTS_RETRY_PASS_MS = 25000;
 
 /**
  * Sample start / middle / end of a long transcript for AI vocabulary + summary.

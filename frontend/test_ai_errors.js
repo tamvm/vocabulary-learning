@@ -46,7 +46,7 @@ assertEqual(
 );
 assertEqual(
   apiErrorMessage({ message: 'Network Error', code: 'ERR_NETWORK' }),
-  'The connection was interrupted before the server finished. Generating highlights can hit a proxy timeout — please try again.',
+  'The connection was interrupted before the server finished. Please try again.',
   'maps axios network error'
 );
 assertEqual(

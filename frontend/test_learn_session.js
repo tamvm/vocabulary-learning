@@ -126,6 +126,19 @@ assertEqual(
   true,
   'reanalyzes empty shell with a video URL'
 );
+assertEqual(
+  lessonNeedsReanalyze({
+    prepareStatus: 'pending',
+    vocabulary: [],
+    studyWords: [],
+    questions: [],
+    cues: [],
+    summary: '',
+    lesson: { videoUrl: 'https://youtu.be/abcdefghijk' },
+  }),
+  false,
+  'does not reanalyze while prepare pipeline is pending'
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

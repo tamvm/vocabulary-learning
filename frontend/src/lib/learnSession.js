@@ -1,3 +1,12 @@
+export function prepareStepLabel(step) {
+  if (step === 'transcript') return 'Fetching transcript…';
+  if (step === 'vocab') return 'Finding vocabulary…';
+  if (step === 'highlights') return 'Generating highlights…';
+  if (step === 'quiz') return 'Preparing quiz…';
+  if (step === 'done') return 'Lesson ready';
+  return 'Preparing lesson…';
+}
+
 export const LEARN_STEPS = {
   URL: 1,
   VOCAB: 2,
@@ -25,6 +34,7 @@ export function reuseUnfinishedLessonId(lessons, videoId) {
 }
 
 export function lessonNeedsReanalyze(data) {
+  if (data?.prepareStatus === 'pending') return false;
   const hasVocab = Array.isArray(data?.vocabulary) && data.vocabulary.length > 0;
   const hasStudy = Array.isArray(data?.studyWords) && data.studyWords.length > 0;
   const hasQuiz = Array.isArray(data?.questions) && data.questions.length > 0;
