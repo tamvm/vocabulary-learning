@@ -284,7 +284,8 @@ function StepVocab({
 
         {vocabulary.length === 0 && (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            No vocabulary found for your level. Try a different video.
+            No word list from this transcript yet. Continue to Study and tap any
+            word to look it up and add it.
           </div>
         )}
       </div>
@@ -1078,7 +1079,10 @@ export default function Learn() {
       if (data.prepareError && data.prepareStatus !== 'failed') {
         toast.error(data.prepareError);
       } else if (totalFound === 0) {
-        toast('No new vocabulary found for your level. Try another video.', { icon: 'ℹ️' });
+        toast(
+          'No word list yet — continue to Study and tap words in the transcript to add them.',
+          { icon: 'ℹ️' }
+        );
       } else {
         toast.success(`Found ${totalFound} vocabulary items`);
       }
@@ -1458,7 +1462,7 @@ export default function Learn() {
         <title>Learn from YouTube — Magic English</title>
       </Helmet>
 
-      <div className="py-6 px-4 sm:px-6 lg:px-8">
+      <div className="pb-2">
         {(step !== STEPS.URL || searchParams.get('lesson')) && (
           <div className="max-w-3xl mx-auto mb-4">
             <button
@@ -1472,7 +1476,7 @@ export default function Learn() {
           </div>
         )}
         {/* Step indicator */}
-        <div className="max-w-3xl mx-auto mb-8">
+        <div className="max-w-3xl mx-auto mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>

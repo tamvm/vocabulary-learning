@@ -13,6 +13,7 @@ import {
   PREPARE_STEPS,
   runLessonPreparePipeline,
   buildPrepareJobView,
+  VOCAB_SAMPLE_CHARS,
 } from './src/services/lessonPrepareJob.js';
 
 function assert(cond, msg) {
@@ -151,5 +152,75 @@ assert(
 await new Promise((resolve) => setImmediate(resolve));
 await new Promise((resolve) => setImmediate(resolve));
 assert(started === 1, 'ran once');
+
+assert(VOCAB_SAMPLE_CHARS >= 12000, 'vocab sample covers more than a short greeting');
+
+const retryPatches = [];
+const retrySupabase = {
+  from() {
+    return {
+      select() {
+        return {
+          eq() {
+            return {
+              eq() {
+                return Promise.resolve({ data: [], error: null });
+              },
+            };
+          },
+        };
+      },
+      update(patch) {
+        retryPatches.push({ ...patch });
+        return {
+          eq() {
+            return {
+              eq() {
+                return Promise.resolve({ error: null });
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+};
+
+let vocabCalls = 0;
+const retryResult = await runLessonPreparePipeline({
+  supabase: retrySupabase,
+  userId: 'user-1',
+  lesson: {
+    id: 'lesson-retry',
+    video_url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    user_cefr_level: 'C1',
+  },
+  fetchTranscript: async () => ({
+    success: true,
+    content: 'A'.repeat(200),
+    title: 'Talk',
+    cues: [{ start: 0, end: 1, text: 'hi' }],
+    chapters: [],
+    videoInfo: { duration: 60, thumbnail: null },
+    provider: 'transcript24',
+  }),
+  analyzeVocab: async (_text, _cefr, options = {}) => {
+    vocabCalls += 1;
+    if (!options.preferRecall) return { vocabulary: [] };
+    return { vocabulary: [{ word: 'payload', definition: 'cargo' }] };
+  },
+  summarize: async () => ({ summary: '- one', chapters: [] }),
+  generateQuiz: async () => [{ question: 'Q', options: ['a', 'b', 'c', 'd'], correctIndex: 0 }],
+});
+assert(retryResult.ok === true, 'retry pipeline ok');
+assert(vocabCalls === 2, 'retries empty vocab with preferRecall');
+assert(
+  retryPatches.some(
+    (p) =>
+      Array.isArray(p.vocabulary_snapshot) &&
+      p.vocabulary_snapshot.some((item) => item.word === 'payload')
+  ),
+  'persists vocab from recall retry'
+);
 
 console.log('test_lesson_prepare_job: OK');

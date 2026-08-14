@@ -53,14 +53,18 @@ export function extractLessonSummaryRaw(parsed) {
   return '';
 }
 
+function stripAiJsonFences(content) {
+  return String(content || '')
+    .replace(/```json\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
 export function parseAiJsonObject(content) {
   if (!content || typeof content !== 'string') {
     throw new Error('Empty AI content');
   }
-  const cleaned = content
-    .replace(/```json\s*/gi, '')
-    .replace(/```/g, '')
-    .trim();
+  const cleaned = stripAiJsonFences(content);
 
   try {
     return JSON.parse(cleaned);
@@ -72,6 +76,73 @@ export function parseAiJsonObject(content) {
     }
     throw new Error('Invalid AI response format for summary');
   }
+}
+
+/**
+ * Parse a JSON array from an LLM reply (fences, leading prose, wrapped object,
+ * or a truncated last object).
+ */
+export function parseAiJsonArray(content) {
+  if (!content || typeof content !== 'string') {
+    throw new Error('Empty AI content');
+  }
+  const cleaned = stripAiJsonFences(content);
+
+  const asArray = (parsed) => {
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.vocabulary)) return parsed.vocabulary;
+      if (Array.isArray(parsed.items)) return parsed.items;
+      if (Array.isArray(parsed.words)) return parsed.words;
+    }
+    return null;
+  };
+
+  try {
+    const parsed = asArray(JSON.parse(cleaned));
+    if (parsed) return parsed;
+  } catch {
+    // try slices below
+  }
+
+  const objStart = cleaned.indexOf('{');
+  const arrStart = cleaned.indexOf('[');
+  if (objStart >= 0 && (arrStart < 0 || objStart < arrStart)) {
+    const objEnd = cleaned.lastIndexOf('}');
+    if (objEnd > objStart) {
+      try {
+        const parsed = asArray(JSON.parse(cleaned.slice(objStart, objEnd + 1)));
+        if (parsed) return parsed;
+      } catch {
+        // fall through to array slice
+      }
+    }
+  }
+
+  if (arrStart >= 0) {
+    const arrEnd = cleaned.lastIndexOf(']');
+    if (arrEnd > arrStart) {
+      try {
+        const parsed = asArray(JSON.parse(cleaned.slice(arrStart, arrEnd + 1)));
+        if (parsed) return parsed;
+      } catch {
+        // truncated array
+      }
+    }
+
+    const truncated = arrEnd > arrStart ? cleaned.slice(arrStart, arrEnd) : cleaned.slice(arrStart);
+    const lastObj = truncated.lastIndexOf('}');
+    if (lastObj > 0) {
+      try {
+        const parsed = asArray(JSON.parse(`${truncated.slice(0, lastObj + 1)}]`));
+        if (parsed) return parsed;
+      } catch {
+        // give up
+      }
+    }
+  }
+
+  throw new Error('Invalid AI response format');
 }
 
 function bulletize(text) {

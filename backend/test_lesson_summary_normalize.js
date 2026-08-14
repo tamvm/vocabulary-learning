@@ -6,6 +6,7 @@ import {
   extractLessonSummaryRaw,
   looksLikeTranscriptDump,
   normalizeLessonSummary,
+  parseAiJsonArray,
   parseAiJsonObject,
 } from './src/services/lessonSummaryNormalize.js';
 
@@ -61,5 +62,16 @@ assert(
   'extracts summary string'
 );
 assert(extractLessonSummaryRaw({}) === '', 'empty parsed object');
+
+const vocabArr = parseAiJsonArray('```json\n[{"word":"orbit"}]\n```');
+assert(vocabArr[0].word === 'orbit', 'strips fences on array');
+
+const wrapped = parseAiJsonArray('Here:\n{"vocabulary":[{"word":"thrust"}]}\n');
+assert(wrapped[0].word === 'thrust', 'unwraps vocabulary key');
+
+const truncated = parseAiJsonArray(
+  '[{"word":"payload","definition":"cargo"},{"word":"cut'
+);
+assert(truncated.length === 1 && truncated[0].word === 'payload', 'recovers truncated array');
 
 console.log('test_lesson_summary_normalize: OK');

@@ -531,8 +531,8 @@ const Study = () => {
     const hardCards = reviewedCards.filter(card => card.wasHard);
 
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="py-2 sm:py-4">
+        <div className="max-w-6xl mx-auto">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -670,8 +670,8 @@ const Study = () => {
       Math.round((studyStats.correctAnswers / studyStats.totalAnswers) * 100) : 0;
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+      <div className="flex items-center justify-center py-12 sm:py-16">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mx-auto">
           <div className="text-center">
             <Check className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -713,12 +713,12 @@ const Study = () => {
           <title>Study Session - Magic English</title>
         </Helmet>
 
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="py-2 sm:py-4">
+          <div className="max-w-4xl mx-auto">
             {/* Header with Mode Toggle */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                   Study
                 </h1>
 
@@ -798,7 +798,7 @@ const Study = () => {
       (studyMode === 'flashcard' && !currentCard) ||
       (studyMode === 'quiz' && !currentQuestion)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex items-center justify-center py-16">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -810,14 +810,15 @@ const Study = () => {
         <title>Study Session - Magic English</title>
       </Helmet>
 
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="py-2 sm:py-4">
+        <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                Study Session
-              </h1>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
+            <div className="flex flex-col gap-3 min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  Study Session
+                </h1>
 
               {/* Mode Toggle */}
               <div className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
@@ -842,8 +843,9 @@ const Study = () => {
                   Quiz
                 </button>
               </div>
+              </div>
 
-              <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-300">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600 dark:text-gray-300">
                 <div className="flex items-center space-x-1">
                   <BookOpen className="h-4 w-4" />
                   <span>{studyStats.cardsStudied}</span>
@@ -882,7 +884,7 @@ const Study = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 self-end sm:self-start">
               <button
                 onClick={() => setShowShortcutsHelp(true)}
                 className="p-2 text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400"
@@ -929,7 +931,7 @@ const Study = () => {
                   onNext={handleQuizNext}
                 />
               ) : (
-                <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+                <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-8 text-center">
                   <div className="text-yellow-600 dark:text-yellow-400 mb-4">
                     <HelpCircle className="h-12 w-12 mx-auto" />
                   </div>
@@ -952,7 +954,7 @@ const Study = () => {
             )}
 
             {/* Help hint */}
-            <div className="text-center text-gray-500 dark:text-gray-400 text-sm">
+            <div className="text-center text-gray-500 dark:text-gray-400 text-sm px-1">
               Press <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">E</kbd> or{' '}
               <button
                 onClick={() => setShowShortcutsHelp(true)}
@@ -961,13 +963,13 @@ const Study = () => {
                 click here
               </button> for keyboard shortcuts
               {studyMode === 'quiz' && (
-                <span className="ml-4">
+                <span className="block sm:inline sm:ml-4 mt-2 sm:mt-0">
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">1-4</kbd> to select options
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">Space/Enter</kbd> to continue
                 </span>
               )}
               {studyMode === 'flashcard' && (
-                <span className="ml-4">
+                <span className="block sm:inline sm:ml-4 mt-2 sm:mt-0">
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">1-3</kbd> for rating
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">P</kbd> to pronounce
                   • <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">Space</kbd> to flip
