@@ -180,7 +180,7 @@ export default function StepStudy({
         if (!analysis || isUnavailableAnalysis(analysis)) {
           throw new Error(
             response.data?.message ||
-              'Could not look up this word. AI is unavailable — try again shortly.'
+              'AI could not look up this word. Check that AI_PROVIDER and AI_API_KEY are set on the backend.'
           );
         }
         const normalized = normalizeWordDetail(analysis, cleaned);

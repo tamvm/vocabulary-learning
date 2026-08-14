@@ -24,6 +24,7 @@ import {
   reuseUnfinishedLessonId,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
+import { apiErrorMessage } from '@/lib/aiErrors';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
@@ -725,12 +726,9 @@ export default function Learn() {
         toast.success('Highlights ready');
       }
     } catch (err) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to generate highlights';
-      if (!auto) toast.error(msg);
-      else console.warn('Auto highlights failed:', msg);
+      const msg = apiErrorMessage(err, 'Failed to generate highlights');
+      setError(msg);
+      toast.error(msg);
     } finally {
       highlightsLoadingRef.current = false;
       setHighlightsLoading(false);
@@ -822,7 +820,7 @@ export default function Learn() {
       }
       return nextQuestions;
     } catch (err) {
-      toast.error('Failed to generate quiz: ' + (err.response?.data?.message || err.message));
+      toast.error('Failed to generate quiz: ' + apiErrorMessage(err, 'Failed to generate quiz'));
       setQuestions([]);
       return [];
     } finally {
@@ -885,13 +883,17 @@ export default function Learn() {
       }
       loadHistory();
 
-      if (data.totalFound === 0) {
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        const warningText = data.warnings.join(' ');
+        setError(warningText);
+        toast.error(warningText);
+      } else if (data.totalFound === 0) {
         toast('No new vocabulary found for your level. Try another video.', { icon: 'ℹ️' });
       } else {
         toast.success(`Found ${data.totalFound} vocabulary items`);
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Failed to analyze video';
+      const msg = apiErrorMessage(err, 'Failed to analyze video');
       setError(msg);
       toast.error(msg);
     } finally {
@@ -1215,6 +1217,12 @@ export default function Learn() {
             ))}
           </div>
         </div>
+
+        {error && step !== STEPS.URL ? (
+          <div className="max-w-6xl mx-auto mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        ) : null}
 
         {/* Step content */}
         {step === STEPS.URL && (

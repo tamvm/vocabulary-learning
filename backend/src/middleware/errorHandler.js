@@ -1,6 +1,13 @@
 export const errorHandler = (err, req, res, next) => {
   console.error('Error:', err.stack || err);
 
+  if (err.expose && err.statusCode) {
+    return res.status(err.statusCode).json({
+      error: err.code || 'error',
+      message: err.message,
+    });
+  }
+
   // Joi validation errors
   if (err.isJoi) {
     return res.status(400).json({
