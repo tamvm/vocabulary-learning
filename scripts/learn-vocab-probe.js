@@ -44,6 +44,7 @@ function parseArgs(argv) {
     remote: false,
     direct: false,
     transcriptOnly: false,
+    allowYtdlp: false,
     cefr: process.env.LEARN_CEFR || 'B2',
     url: DEFAULT_URL,
     help: false,
@@ -54,6 +55,7 @@ function parseArgs(argv) {
     else if (arg === '--remote') options.remote = true;
     else if (arg === '--direct') options.direct = true;
     else if (arg === '--transcript-only') options.transcriptOnly = true;
+    else if (arg === '--allow-ytdlp') options.allowYtdlp = true;
     else if (arg === '--cefr') options.cefr = argv[++i] || options.cefr;
     else if (arg === '--url') options.url = argv[++i] || options.url;
     else if (arg.startsWith('http://') || arg.startsWith('https://')) options.url = arg;
@@ -72,8 +74,9 @@ Default video: ${DEFAULT_URL}
 
 Direct (this process, same services as Learn prepare):
   backend/.env needs TRANSCRIPT24_API_KEY + AI_PROVIDER / AI_API_KEY / AI_MODEL
+  Do not rely on yt-dlp — YouTube returns 429 / bot-check from laptops.
 
-Remote (live API):
+Remote (live API — recommended if you do not have Transcript24 locally):
   VOCA_ACCESS_TOKEN   Supabase session JWT (eyJ…) from DevTools after login
   VOCA_EMAIL / VOCA_PASSWORD  Sign in instead of a token
   VOCA_API_URL        Default https://voca-api.kenchange.com
@@ -83,6 +86,7 @@ Options:
   --url <youtube-url>
   --cefr B1|B2|C1|…
   --transcript-only   Skip AI vocab (direct only)
+  --allow-ytdlp       Opt in to yt-dlp fallback (usually blocked by YouTube)
 `);
 }
 
@@ -173,6 +177,9 @@ async function runDirect(options) {
   const { youtubeTranscriptService } = await import(
     '../backend/src/services/youtubeTranscriptService.js'
   );
+  const { transcript24Service } = await import(
+    '../backend/src/services/transcript24Service.js'
+  );
   const { sampleTranscriptForAnalysis } = await import(
     '../backend/src/services/youtubeAnalyzeHelpers.js'
   );
@@ -181,10 +188,17 @@ async function runDirect(options) {
   );
   const { aiService } = await import('../backend/src/services/aiService.js');
 
+  if (transcript24Service.isConfigured()) {
+    ok('Transcript24 key is set');
+  } else {
+    console.log('note  TRANSCRIPT24_API_KEY missing — /learn on the server uses this, not yt-dlp');
+  }
+
   const started = Date.now();
   const transcript = await youtubeTranscriptService.processYouTubeUrl(options.url, {
     transcript24TimeoutMs: 120000,
-    metaTimeoutMs: 15000,
+    skipYtDlpMeta: true,
+    allowYtDlpFallback: options.allowYtdlp,
   });
 
   if (!transcript?.success) {
