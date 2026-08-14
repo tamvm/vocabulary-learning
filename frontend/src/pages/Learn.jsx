@@ -711,6 +711,7 @@ export default function Learn() {
     if (!lessonId || highlightsLoadingRef.current) return;
     highlightsLoadingRef.current = true;
     setHighlightsLoading(true);
+    setError(null);
     try {
       const response = await youtubeAPI.generateHighlights(lessonId);
       const nextSummary = response.data?.summary || '';

@@ -426,12 +426,17 @@ router.post('/quiz', async (req, res, next) => {
     }
 
     console.log(`🧠 Generating ${questionCount} mixed quiz questions...`);
-    const validatedQuestions = await aiService.generateVideoMixedQuiz({
-      transcript: content,
-      userCefrLevel,
-      questionCount,
-      vocabularyWords: vocabWords,
-    });
+    let validatedQuestions;
+    try {
+      validatedQuestions = await aiService.generateVideoMixedQuiz({
+        transcript: content,
+        userCefrLevel,
+        questionCount,
+        vocabularyWords: vocabWords,
+      });
+    } catch (aiErr) {
+      throw createPublicAiError(aiErr);
+    }
 
     try {
       const quizPatch = {
@@ -475,7 +480,7 @@ router.post('/quiz', async (req, res, next) => {
     });
   } catch (error) {
     console.error('YouTube quiz error:', error);
-    next(error.expose ? error : createPublicAiError(error));
+    next(error);
   }
 });
 
@@ -735,13 +740,18 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
     );
 
     console.log(`📝 Generating highlights for lesson ${lessonId}...`);
-    const result = await aiService.summarizeAndChapter({
-      transcript: summaryText,
-      title: lesson.title || '',
-      durationSeconds: lesson.duration_seconds,
-      existingChapters: existingChapters.length ? existingChapters : null,
-      needChapters: existingChapters.length === 0,
-    });
+    let result;
+    try {
+      result = await aiService.summarizeAndChapter({
+        transcript: summaryText,
+        title: lesson.title || '',
+        durationSeconds: lesson.duration_seconds,
+        existingChapters: existingChapters.length ? existingChapters : null,
+        needChapters: existingChapters.length === 0,
+      });
+    } catch (aiErr) {
+      throw createPublicAiError(aiErr);
+    }
 
     const summary = result.summary || '';
     const chapters = result.chapters?.length
@@ -780,7 +790,7 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Generate highlights error:', error);
-    next(error.expose ? error : createPublicAiError(error));
+    next(error);
   }
 });
 
