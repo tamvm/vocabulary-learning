@@ -468,15 +468,14 @@ class YouTubeTranscriptService {
           };
         }
       }
-    } else {
+    } else if (allowYtDlpFallback) {
       console.log('TRANSCRIPT24_API_KEY not set — using yt-dlp transcript path');
-      if (!allowYtDlpFallback) {
-        return {
-          success: false,
-          error:
-            'TRANSCRIPT24_API_KEY is not set. yt-dlp fallback skipped — YouTube returns 429 / bot-check from local machines. Copy the key into backend/.env or probe the live API with --remote.',
-        };
-      }
+    } else {
+      return {
+        success: false,
+        error:
+          'TRANSCRIPT24_API_KEY is not set. yt-dlp fallback skipped — YouTube returns 429 / bot-check from local machines. Copy the key into backend/.env or probe the live API with --remote.',
+      };
     }
 
     // 2) yt-dlp fallback (often unavailable in Alpine/prod — keep short failure path)

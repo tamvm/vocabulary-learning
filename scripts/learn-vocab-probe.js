@@ -5,7 +5,7 @@
  *
  * Direct (backend/.env — Transcript24 + AI keys):
  *   node scripts/learn-vocab-probe.js --direct
- *   node scripts/learn-vocab-probe.js --direct --cefr B1 --url 'https://www.youtube.com/watch?v=XuoqKYxDHVc'
+ *   node scripts/learn-vocab-probe.js --direct --cefr B1 --url 'https://www.youtube.com/watch?v=VIDEO_ID'
  *   node scripts/learn-vocab-probe.js --direct --transcript-only
  *
  * Remote (logged-in API, same as the app):
@@ -46,7 +46,7 @@ function parseArgs(argv) {
     transcriptOnly: false,
     allowYtdlp: false,
     cefr: process.env.LEARN_CEFR || 'B2',
-    url: DEFAULT_URL,
+    url: process.env.LEARN_VIDEO_URL || process.env.YOUTUBE_URL || DEFAULT_URL,
     help: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -57,7 +57,9 @@ function parseArgs(argv) {
     else if (arg === '--transcript-only') options.transcriptOnly = true;
     else if (arg === '--allow-ytdlp') options.allowYtdlp = true;
     else if (arg === '--cefr') options.cefr = argv[++i] || options.cefr;
-    else if (arg === '--url') options.url = argv[++i] || options.url;
+    else if (arg === '--url' || arg === '--video' || arg === '--video-url' || arg === '-u') {
+      options.url = argv[++i] || options.url;
+    }
     else if (arg.startsWith('http://') || arg.startsWith('https://')) options.url = arg;
     else {
       console.error(`Unknown argument: ${arg}`);
@@ -70,7 +72,11 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/learn-vocab-probe.js [--direct|--remote] [options]
 
-Default video: ${DEFAULT_URL}
+Examples:
+  node scripts/learn-vocab-probe.js --remote --url 'https://www.youtube.com/watch?v=VIDEO_ID'
+  node scripts/learn-vocab-probe.js --direct --video 'https://youtu.be/VIDEO_ID' --cefr B1
+
+Default video if you omit --url: ${DEFAULT_URL}
 
 Direct (this process, same services as Learn prepare):
   backend/.env needs TRANSCRIPT24_API_KEY + AI_PROVIDER / AI_API_KEY / AI_MODEL
@@ -83,7 +89,7 @@ Remote (live API — recommended if you do not have Transcript24 locally):
   SUPABASE_URL / SUPABASE_ANON_KEY  Needed for email/password
 
 Options:
-  --url <youtube-url>
+  --url, --video, -u <youtube-url>   Video to probe (or env LEARN_VIDEO_URL)
   --cefr B1|B2|C1|…
   --transcript-only   Skip AI vocab (direct only)
   --allow-ytdlp       Opt in to yt-dlp fallback (usually blocked by YouTube)
