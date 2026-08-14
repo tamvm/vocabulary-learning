@@ -49,20 +49,34 @@ function parseArgs(argv) {
     url: process.env.LEARN_VIDEO_URL || process.env.YOUTUBE_URL || DEFAULT_URL,
     help: false,
   };
+  const scriptPath = fileURLToPath(import.meta.url);
+
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
+    const raw = String(argv[i] || '').replace(/[\u2010-\u2015\u2212]/g, '-');
+    const eq = raw.startsWith('-') ? raw.indexOf('=') : -1;
+    const arg = eq > 1 ? raw.slice(0, eq) : raw;
+    const inline = eq > 1 ? raw.slice(eq + 1) : '';
+
     if (arg === '--help' || arg === '-h') options.help = true;
     else if (arg === '--remote') options.remote = true;
     else if (arg === '--direct') options.direct = true;
     else if (arg === '--transcript-only') options.transcriptOnly = true;
     else if (arg === '--allow-ytdlp') options.allowYtdlp = true;
-    else if (arg === '--cefr') options.cefr = argv[++i] || options.cefr;
-    else if (arg === '--url' || arg === '--video' || arg === '--video-url' || arg === '-u') {
-      options.url = argv[++i] || options.url;
-    }
-    else if (arg.startsWith('http://') || arg.startsWith('https://')) options.url = arg;
-    else {
-      console.error(`Unknown argument: ${arg}`);
+    else if (arg === '--cefr') {
+      options.cefr = inline || argv[++i] || options.cefr;
+    } else if (arg === '--url' || arg === '--video' || arg === '--video-url' || arg === '-u') {
+      const next = inline || argv[++i];
+      if (!next || next.startsWith('-')) {
+        console.error(`${arg} requires a YouTube URL`);
+        options.help = true;
+      } else {
+        options.url = next;
+      }
+    } else if (arg.startsWith('http://') || arg.startsWith('https://')) {
+      options.url = arg;
+    } else {
+      console.error(`Unknown argument: ${argv[i]}`);
+      console.error(`script ${scriptPath}`);
       options.help = true;
     }
   }
