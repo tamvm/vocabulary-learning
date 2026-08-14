@@ -12,11 +12,7 @@ import {
   resolveAiProvider,
 } from './aiConfig.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
-import {
-  requireChatMessageText,
-  stripJsonFences,
-  withThinkingDisabled,
-} from './chatMessageText.js';
+import { withThinkingDisabled } from './chatMessageText.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
