@@ -210,8 +210,16 @@ async function runDirect(options) {
 
   if (transcript24Service.isConfigured()) {
     ok('Transcript24 key is set');
+  } else if (!options.allowYtdlp) {
+    fail(
+      'TRANSCRIPT24_API_KEY is not set in backend/.env. --direct will not call yt-dlp (YouTube 429 / bot-check).\n' +
+        '  Option A: copy TRANSCRIPT24_API_KEY from Coolify into backend/.env, then re-run --direct\n' +
+        `  Option B: probe production:\n` +
+        `    VOCA_ACCESS_TOKEN='eyJ…' node scripts/learn-vocab-probe.js --remote --cefr ${options.cefr} --url '${options.url}'`
+    );
+    return;
   } else {
-    console.log('note  TRANSCRIPT24_API_KEY missing — /learn on the server uses this, not yt-dlp');
+    console.log('note  yt-dlp fallback enabled; YouTube often blocks this');
   }
 
   const started = Date.now();

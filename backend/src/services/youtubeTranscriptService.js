@@ -406,7 +406,7 @@ class YouTubeTranscriptService {
 
     const transcript24TimeoutMs = options.transcript24TimeoutMs ?? 60000;
     const metaTimeoutMs = options.metaTimeoutMs ?? 8000;
-    const allowYtDlpFallback = options.allowYtDlpFallback !== false;
+    const allowYtDlpFallback = options.allowYtDlpFallback === true;
     const skipYtDlpMeta = Boolean(options.skipYtDlpMeta);
 
     // 1) Transcript24 primary
