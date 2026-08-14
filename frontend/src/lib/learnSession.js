@@ -18,6 +18,15 @@ export function isUnfinishedLesson(lesson) {
   return Boolean(lesson && lesson.status !== 'completed');
 }
 
+export function isPreparingLesson(lesson) {
+  const status = lesson?.prepare_status || lesson?.prepareStatus;
+  return status === 'pending';
+}
+
+export function prepareStepOf(lesson) {
+  return lesson?.prepare_step || lesson?.prepareStep || null;
+}
+
 export function extractYoutubeId(url) {
   const match = String(url || '').match(
     /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
@@ -57,6 +66,17 @@ export function latestUnfinished(lessons) {
   return (lessons || []).find(isUnfinishedLesson) || null;
 }
 
+export function upsertHistoryLesson(history, lesson) {
+  const rows = Array.isArray(history) ? [...history] : [];
+  if (!lesson?.id) return rows;
+  const idx = rows.findIndex((row) => row.id === lesson.id);
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], ...lesson };
+    return rows;
+  }
+  return [lesson, ...rows];
+}
+
 export function lessonThumbnail(lesson) {
   if (lesson?.thumbnail_url) return lesson.thumbnail_url;
   if (lesson?.video_id) {
@@ -66,6 +86,9 @@ export function lessonThumbnail(lesson) {
 }
 
 export function stepLabel(lesson) {
+  if (isPreparingLesson(lesson)) {
+    return prepareStepLabel(prepareStepOf(lesson));
+  }
   if (lesson?.status === 'completed') return 'Completed';
   const step = Number(lesson?.current_step);
   if (step === LEARN_STEPS.QUIZ || lesson?.status === 'quiz_generated') return 'Quiz';
@@ -74,6 +97,13 @@ export function stepLabel(lesson) {
 }
 
 export function statusTone(lesson) {
+  if (isPreparingLesson(lesson)) {
+    return {
+      label: 'Preparing',
+      className:
+        'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
+    };
+  }
   if (lesson?.status === 'completed') {
     return {
       label: 'Completed',

@@ -15,6 +15,8 @@ import {
   reuseUnfinishedLessonId,
   statusTone,
   stepLabel,
+  isPreparingLesson,
+  upsertHistoryLesson,
 } from './src/lib/learnSession.js';
 
 let failed = 0;
@@ -150,6 +152,26 @@ assertEqual(
   }),
   false,
   'does not reanalyze while prepare pipeline is pending'
+);
+
+const preparing = {
+  id: 'p',
+  status: 'analyzed',
+  prepare_status: 'pending',
+  prepare_step: 'transcript',
+  title: 'Long interview',
+  video_id: 'xyzxyzxyzxy',
+};
+assertEqual(isPreparingLesson(preparing), true, 'pending prepare_status is preparing');
+assertEqual(statusTone(preparing).label, 'Preparing', 'pending lesson tone is Preparing');
+assertEqual(stepLabel(preparing), 'Fetching transcript…', 'pending lesson shows prepare step');
+
+const listed = upsertHistoryLesson([unfinished], preparing);
+assertEqual(listed[0].id, 'p', 'pending lesson is prepended to Your videos');
+assertEqual(
+  upsertHistoryLesson(listed, { id: 'p', prepare_step: 'vocab' })[0].prepare_step,
+  'vocab',
+  'upsert updates the existing pending row'
 );
 
 if (failed) {
