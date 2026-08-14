@@ -269,6 +269,12 @@ export const youtubeAPI = {
 
   saveProgress: (id, data) =>
     api.patch(`/youtube/lessons/${id}/progress`, data),
+
+  deleteLesson: (id) =>
+    api.delete(`/youtube/lessons/${id}`),
+
+  clearHistory: () =>
+    api.delete('/youtube/history'),
 }
 
 export default api
