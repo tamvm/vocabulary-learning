@@ -1389,9 +1389,9 @@ export default function Learn() {
         <title>Learn from YouTube — Magic English</title>
       </Helmet>
 
-      <div className="py-6 px-4 sm:px-6 lg:px-8">
+      <div className="pb-2">
         {/* Step indicator */}
-        <div className="max-w-3xl mx-auto mb-8">
+        <div className="max-w-3xl mx-auto mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>
