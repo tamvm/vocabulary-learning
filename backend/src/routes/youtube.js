@@ -12,6 +12,10 @@ import {
 import {
   sampleTranscriptForAnalysis,
   capCues,
+  withTimeout,
+  HIGHLIGHTS_ROUTE_TIMEOUT_MS,
+  HIGHLIGHTS_FIRST_PASS_MS,
+  HIGHLIGHTS_RETRY_PASS_MS,
 } from '../services/youtubeAnalyzeHelpers.js';
 import { publicAiFailure, createPublicAiError } from '../services/aiConfig.js';
 const router = express.Router();
@@ -742,14 +746,28 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
     console.log(`📝 Generating highlights for lesson ${lessonId}...`);
     let result;
     try {
-      result = await aiService.summarizeAndChapter({
-        transcript: summaryText,
-        title: lesson.title || '',
-        durationSeconds: lesson.duration_seconds,
-        existingChapters: existingChapters.length ? existingChapters : null,
-        needChapters: existingChapters.length === 0,
-      });
+      result = await withTimeout(
+        aiService.summarizeAndChapter({
+          transcript: summaryText,
+          title: lesson.title || '',
+          durationSeconds: lesson.duration_seconds,
+          existingChapters: existingChapters.length ? existingChapters : null,
+          // Highlights button is summary-only; chapters on this path blew the ~100s proxy budget
+          needChapters: false,
+          firstTimeout: HIGHLIGHTS_FIRST_PASS_MS,
+          retryTimeout: HIGHLIGHTS_RETRY_PASS_MS,
+        }),
+        HIGHLIGHTS_ROUTE_TIMEOUT_MS,
+        'highlights'
+      );
     } catch (aiErr) {
+      if (aiErr?.code === 'timeout') {
+        return res.status(504).json({
+          error: 'highlights_timeout',
+          message:
+            'Generating highlights took too long. Please try again in a moment.',
+        });
+      }
       throw createPublicAiError(aiErr);
     }
 

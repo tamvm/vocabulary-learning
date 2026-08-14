@@ -44,6 +44,18 @@ assertEqual(
   'Internal server error',
   'falls back to error string'
 );
+assertEqual(
+  apiErrorMessage({ message: 'Network Error', code: 'ERR_NETWORK' }),
+  'The connection was interrupted before the server finished. Generating highlights can hit a proxy timeout — please try again.',
+  'maps axios network error'
+);
+assertEqual(
+  apiErrorMessage(
+    { message: 'Network Error', response: { data: { message: 'AI is not configured' } } }
+  ),
+  'AI is not configured',
+  'prefers body over network-error mapping'
+);
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

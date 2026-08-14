@@ -9,6 +9,7 @@ import {
   configurationError,
   createPublicAiError,
 } from './aiConfig.js';
+import { withTimeout } from './youtubeAnalyzeHelpers.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
@@ -1071,6 +1072,9 @@ ${transcript}
     durationSeconds = null,
     existingChapters = null,
     needChapters = true,
+    firstTimeout,
+    retryTimeout,
+    allowRetry = true,
   } = {}) {
     if (!transcript || typeof transcript !== 'string') {
       throw new Error('Transcript must be a non-empty string');
@@ -1109,16 +1113,23 @@ ${transcript}
         .sort((a, b) => a.start - b.start);
     };
 
+    const pass1Ms = Number(firstTimeout) > 0 ? Number(firstTimeout) : 45000;
+    const pass2Ms = Number(retryTimeout) > 0 ? Number(retryTimeout) : 60000;
+
     let parsed = null;
     let summary = '';
     try {
-      parsed = await this.requestLessonHighlights({
-        transcript: truncatedTranscript,
-        title,
-        durationSeconds,
-        needChapters: shouldChapter,
-        timeout: 45000,
-      });
+      parsed = await withTimeout(
+        this.requestLessonHighlights({
+          transcript: truncatedTranscript,
+          title,
+          durationSeconds,
+          needChapters: shouldChapter,
+          timeout: pass1Ms,
+        }),
+        pass1Ms,
+        'highlights-pass-1'
+      );
       summary = normalizeLessonSummary(
         extractLessonSummaryRaw(parsed),
         truncatedTranscript
@@ -1127,20 +1138,24 @@ ${transcript}
       console.warn('First highlights pass failed:', err.message);
     }
 
-    if (!summary) {
+    if (!summary && allowRetry) {
       const retryTranscript =
         truncatedTranscript.length > 8000
           ? truncatedTranscript.slice(0, 8000) + '\n[... transcript continues ...]'
           : truncatedTranscript;
       console.warn('Retrying lesson highlights without chapters');
       try {
-        parsed = await this.requestLessonHighlights({
-          transcript: retryTranscript,
-          title,
-          durationSeconds,
-          needChapters: false,
-          timeout: 60000,
-        });
+        parsed = await withTimeout(
+          this.requestLessonHighlights({
+            transcript: retryTranscript,
+            title,
+            durationSeconds,
+            needChapters: false,
+            timeout: pass2Ms,
+          }),
+          pass2Ms,
+          'highlights-pass-2'
+        );
         summary = normalizeLessonSummary(
           extractLessonSummaryRaw(parsed),
           retryTranscript

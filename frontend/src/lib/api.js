@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { apiErrorMessage } from './aiErrors'
 
 // Create axios instance with default config
 const api = axios.create({
@@ -38,11 +39,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status
-    let message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      'Something went wrong'
+    let message = apiErrorMessage(error, 'Something went wrong')
 
     // Gateway / client timeouts — keep messages endpoint-agnostic (this interceptor is global)
     if (status === 502 || status === 504) {
