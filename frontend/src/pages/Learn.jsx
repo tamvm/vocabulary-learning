@@ -688,6 +688,7 @@ export default function Learn() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resumeLoadingId, setResumeLoadingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -709,6 +710,46 @@ export default function Learn() {
       setHistoryLoading(false);
     }
   }, []);
+
+  const handleDeleteLesson = useCallback(async (id) => {
+    if (!id) return;
+    if (!confirm('Remove this session? Words you already saved stay in your vocabulary.')) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      await youtubeAPI.deleteLesson(id);
+      setHistory((prev) => (prev || []).filter((lesson) => lesson.id !== id));
+      if (searchParams.get('lesson') === id) {
+        setSearchParams({}, { replace: true });
+      }
+      toast.success('Session removed');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to remove session');
+    } finally {
+      setDeletingId(null);
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleClearHistory = useCallback(async () => {
+    if (!(history || []).length) return;
+    if (!confirm('Remove all recent Learn sessions? Words you already saved stay in your vocabulary.')) {
+      return;
+    }
+    setDeletingId('all');
+    try {
+      await youtubeAPI.clearHistory();
+      setHistory([]);
+      if (searchParams.get('lesson')) {
+        setSearchParams({}, { replace: true });
+      }
+      toast.success('Recent sessions cleared');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to clear sessions');
+    } finally {
+      setDeletingId(null);
+    }
+  }, [history, searchParams, setSearchParams]);
 
   const generateQuiz = useCallback(async ({ videoUrl, id, words }) => {
     setLoading(true);
@@ -1124,6 +1165,9 @@ export default function Learn() {
             onContinue={(id) => resumeLesson(id, 'resume')}
             onReview={(id) => resumeLesson(id, 'review')}
             onRetake={(id) => resumeLesson(id, 'retake')}
+            onDelete={handleDeleteLesson}
+            onClearAll={handleClearHistory}
+            deletingId={deletingId}
           />
         )}
 

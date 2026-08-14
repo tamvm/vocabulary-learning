@@ -612,6 +612,62 @@ router.get('/lessons/:id', async (req, res, next) => {
   }
 });
 
+// DELETE /api/youtube/lessons/:id — remove a learn session (keeps saved words)
+router.delete('/lessons/:id', async (req, res, next) => {
+  try {
+    const { error: idError, value: lessonId } = Joi.string()
+      .uuid()
+      .required()
+      .validate(req.params.id);
+    if (idError) {
+      idError.isJoi = true;
+      return next(idError);
+    }
+
+    const { data, error } = await req.supabase
+      .from('video_lessons')
+      .delete()
+      .eq('id', lessonId)
+      .eq('user_id', req.user.id)
+      .select('id');
+
+    if (error) throw error;
+    if (!data?.length) {
+      return res.status(404).json({
+        error: 'lesson_not_found',
+        message: 'Lesson not found',
+      });
+    }
+
+    res.json({ success: true, deleted: true, lessonId });
+  } catch (error) {
+    console.error('Delete lesson error:', error);
+    next(error);
+  }
+});
+
+// DELETE /api/youtube/history — remove all of the user's learn sessions
+router.delete('/history', async (req, res, next) => {
+  try {
+    const { data, error } = await req.supabase
+      .from('video_lessons')
+      .delete()
+      .eq('user_id', req.user.id)
+      .select('id');
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      deleted: true,
+      count: data?.length || 0,
+    });
+  } catch (error) {
+    console.error('Clear lesson history error:', error);
+    next(error);
+  }
+});
+
 // PATCH /api/youtube/lessons/:id/progress
 router.patch('/lessons/:id/progress', async (req, res, next) => {
   try {
