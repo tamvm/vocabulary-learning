@@ -189,7 +189,7 @@ async function runRemote(options) {
 
   const health = await jsonRequest(`${apiBase}/health`);
   if (!health.ok || health.body?.status !== 'ok') {
-      fail(`/health → ${health.status} ${JSON.stringify(health.body)}`, 'health');
+    fail(`/health → ${health.status} ${JSON.stringify(health.body)}`, 'health');
     return;
   }
   ok(`/health ${health.body.timestamp || ''}`);
