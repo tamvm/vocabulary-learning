@@ -8,6 +8,7 @@ import {
   asAnswerMap,
   asArray,
   buildVideoInfo,
+  deleteOwnedLessons,
   hydrateLessonResponse,
   inferCurrentStep,
   isUnfinishedLesson,
@@ -149,6 +150,69 @@ assert(
   !('vocabulary_snapshot' in pickProgressFields({ currentStep: 2 }, now)),
   'omitted snapshot fields are not wiped'
 );
+
+function createDeleteMock() {
+  const calls = [];
+  const chain = {
+    from(table) {
+      calls.push(['from', table]);
+      return chain;
+    },
+    delete() {
+      calls.push(['delete']);
+      return chain;
+    },
+    eq(column, value) {
+      calls.push(['eq', column, value]);
+      return chain;
+    },
+    select(columns) {
+      calls.push(['select', columns]);
+      return Promise.resolve({ data: [{ id: 'lesson-1' }], error: null });
+    },
+  };
+  return { supabase: chain, calls };
+}
+
+const one = createDeleteMock();
+const oneResult = await deleteOwnedLessons(one.supabase, 'user-1', 'lesson-1');
+assertEqual(oneResult.error, null, 'delete one lesson succeeds');
+assertDeepEqual(
+  one.calls,
+  [
+    ['from', 'video_lessons'],
+    ['delete'],
+    ['eq', 'user_id', 'user-1'],
+    ['eq', 'id', 'lesson-1'],
+    ['select', 'id'],
+  ],
+  'delete one lesson is scoped to owner and id'
+);
+assert(
+  one.calls.every((call) => call[0] !== 'from' || call[1] === 'video_lessons'),
+  'delete one lesson never touches words'
+);
+
+const all = createDeleteMock();
+await deleteOwnedLessons(all.supabase, 'user-1');
+assertDeepEqual(
+  all.calls,
+  [
+    ['from', 'video_lessons'],
+    ['delete'],
+    ['eq', 'user_id', 'user-1'],
+    ['select', 'id'],
+  ],
+  'clear history deletes only the owner rows'
+);
+
+let threw = false;
+try {
+  deleteOwnedLessons(one.supabase, '');
+} catch (err) {
+  threw = err.message === 'userId is required';
+}
+assert(threw, 'deleteOwnedLessons requires userId');
 
 if (failed) {
   console.error(`\n${failed} test(s) failed`);

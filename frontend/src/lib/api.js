@@ -264,6 +264,12 @@ export const youtubeAPI = {
   getHistory: () =>
     api.get('/youtube/history'),
 
+  deleteLesson: (id) =>
+    api.delete(`/youtube/lessons/${id}`),
+
+  clearHistory: () =>
+    api.delete('/youtube/history'),
+
   getLesson: (id) =>
     api.get(`/youtube/lessons/${id}`),
 

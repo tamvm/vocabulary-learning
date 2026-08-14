@@ -113,6 +113,22 @@ export function hydrateLessonResponse(lesson) {
   };
 }
 
+/**
+ * Delete video_lessons rows owned by userId.
+ * Never touches words / known_words — those are independent of sessions.
+ */
+export function deleteOwnedLessons(supabase, userId, lessonId = null) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  let query = supabase.from('video_lessons').delete().eq('user_id', userId);
+  if (lessonId) {
+    query = query.eq('id', lessonId);
+  }
+  return query.select('id');
+}
+
 export function pickProgressFields(body, now = new Date()) {
   const patch = {};
   if (body.currentStep != null) patch.current_step = body.currentStep;

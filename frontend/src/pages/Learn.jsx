@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
-import { LEARN_STEPS as STEPS } from '@/lib/learnSession';
+import { LEARN_STEPS as STEPS, removeLessonsFromHistory } from '@/lib/learnSession';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
@@ -688,6 +688,8 @@ export default function Learn() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resumeLoadingId, setResumeLoadingId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -707,6 +709,43 @@ export default function Learn() {
       console.warn('Failed to load lesson history:', err);
     } finally {
       setHistoryLoading(false);
+    }
+  }, []);
+
+  const handleRemoveLesson = useCallback(async (id) => {
+    if (!id) return;
+    const confirmed = window.confirm(
+      'Remove this session from Recent sessions? Saved vocabulary words will be kept.'
+    );
+    if (!confirmed) return;
+
+    setRemovingId(id);
+    try {
+      await youtubeAPI.deleteLesson(id);
+      setHistory((prev) => removeLessonsFromHistory(prev, id));
+      toast.success('Session removed');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to remove session');
+    } finally {
+      setRemovingId(null);
+    }
+  }, []);
+
+  const handleClearHistory = useCallback(async () => {
+    const confirmed = window.confirm(
+      'Remove all recent YouTube sessions? Saved vocabulary words will be kept.'
+    );
+    if (!confirmed) return;
+
+    setClearingHistory(true);
+    try {
+      await youtubeAPI.clearHistory();
+      setHistory([]);
+      toast.success('Recent sessions cleared');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to clear sessions');
+    } finally {
+      setClearingHistory(false);
     }
   }, []);
 
@@ -1124,6 +1163,10 @@ export default function Learn() {
             onContinue={(id) => resumeLesson(id, 'resume')}
             onReview={(id) => resumeLesson(id, 'review')}
             onRetake={(id) => resumeLesson(id, 'retake')}
+            onRemove={handleRemoveLesson}
+            onClearAll={handleClearHistory}
+            removingId={removingId}
+            clearingHistory={clearingHistory}
           />
         )}
 

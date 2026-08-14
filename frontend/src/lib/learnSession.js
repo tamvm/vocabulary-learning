@@ -44,6 +44,11 @@ export function statusTone(lesson) {
   };
 }
 
+export function removeLessonsFromHistory(lessons, ids) {
+  const remove = new Set(Array.isArray(ids) ? ids : [ids]);
+  return (lessons || []).filter((lesson) => lesson && !remove.has(lesson.id));
+}
+
 export function lessonScoreLabel(lesson) {
   const total = Number(lesson?.quiz_total);
   const score = Number(lesson?.quiz_score);

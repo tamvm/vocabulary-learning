@@ -6,6 +6,7 @@ import {
   Play,
   RotateCcw,
   BookOpen,
+  Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatRelativeTime } from '@/lib/utils';
@@ -18,12 +19,20 @@ import {
   stepLabel,
 } from '@/lib/learnSession';
 
-function SessionRow({ lesson, onContinue, onReview, onRetake, resumeLoadingId }) {
+function SessionRow({
+  lesson,
+  onContinue,
+  onReview,
+  onRetake,
+  onRemove,
+  resumeLoadingId,
+  removingId,
+}) {
   const thumb = lessonThumbnail(lesson);
   const tone = statusTone(lesson);
   const unfinished = isUnfinishedLesson(lesson);
   const score = lessonScoreLabel(lesson);
-  const busy = resumeLoadingId === lesson.id;
+  const busy = resumeLoadingId === lesson.id || removingId === lesson.id;
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
@@ -83,6 +92,20 @@ function SessionRow({ lesson, onContinue, onReview, onRetake, resumeLoadingId })
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={() => onRemove(lesson.id)}
+          disabled={busy}
+          aria-label="Remove session"
+          title="Remove session"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition"
+        >
+          {removingId === lesson.id ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Trash2 className="w-4 h-4" />
+          )}
+        </button>
       </div>
     </div>
   );
@@ -98,6 +121,10 @@ export default function StepUrl({
   onContinue,
   onReview,
   onRetake,
+  onRemove,
+  onClearAll,
+  removingId,
+  clearingHistory,
 }) {
   const [url, setUrl] = React.useState('');
   const unfinished = latestUnfinished(history);
@@ -155,19 +182,35 @@ export default function StepUrl({
                 {stepLabel(unfinished)} · {formatRelativeTime(unfinished.updated_at || unfinished.created_at)}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onContinue(unfinished.id)}
-              disabled={Boolean(resumeLoadingId) || loading}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition flex-shrink-0 w-full sm:w-auto"
-            >
-              {resumeLoadingId === unfinished.id ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              Continue
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => onContinue(unfinished.id)}
+                disabled={Boolean(resumeLoadingId) || loading || removingId === unfinished.id}
+                className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
+              >
+                {resumeLoadingId === unfinished.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+                Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemove(unfinished.id)}
+                disabled={Boolean(resumeLoadingId) || loading || removingId === unfinished.id}
+                aria-label="Remove unfinished session"
+                title="Remove session"
+                className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-white/80 dark:hover:bg-gray-800 disabled:opacity-40 transition"
+              >
+                {removingId === unfinished.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -229,6 +272,16 @@ export default function StepUrl({
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
             Recent sessions
           </h2>
+          {history?.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearAll}
+              disabled={clearingHistory || Boolean(removingId)}
+              className="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40"
+            >
+              {clearingHistory ? 'Clearing…' : 'Clear all'}
+            </button>
+          )}
         </div>
 
         {historyLoading && (
@@ -257,7 +310,9 @@ export default function StepUrl({
                 onContinue={onContinue}
                 onReview={onReview}
                 onRetake={onRetake}
+                onRemove={onRemove}
                 resumeLoadingId={resumeLoadingId}
+                removingId={removingId}
               />
             ))}
           </div>

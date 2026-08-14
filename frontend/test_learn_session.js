@@ -9,6 +9,7 @@ import {
   latestUnfinished,
   lessonScoreLabel,
   lessonThumbnail,
+  removeLessonsFromHistory,
   statusTone,
   stepLabel,
 } from './src/lib/learnSession.js';
@@ -63,6 +64,21 @@ assertEqual(
   lessonThumbnail(unfinished),
   'https://img.youtube.com/vi/abcdefghijk/mqdefault.jpg',
   'falls back to YouTube thumbnail'
+);
+assertEqual(
+  removeLessonsFromHistory([unfinished, completed], 'a').map((l) => l.id).join(','),
+  'b',
+  'removeLessonsFromHistory drops matching id'
+);
+assertEqual(
+  removeLessonsFromHistory([unfinished, completed], ['a', 'b']).length,
+  0,
+  'removeLessonsFromHistory accepts id list'
+);
+assertEqual(
+  removeLessonsFromHistory(null, 'a').length,
+  0,
+  'removeLessonsFromHistory handles empty history'
 );
 
 if (failed) {

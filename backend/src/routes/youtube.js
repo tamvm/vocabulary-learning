@@ -5,6 +5,7 @@ import { youtubeTranscriptService } from '../services/youtubeTranscriptService.j
 import {
   HISTORY_LIST_COLUMNS,
   HISTORY_LIST_COLUMNS_FALLBACK,
+  deleteOwnedLessons,
   hydrateLessonResponse,
   pickProgressFields,
 } from '../services/videoLessonProgress.js';
@@ -577,6 +578,58 @@ router.get('/history', async (req, res, next) => {
     });
   } catch (error) {
     console.error('History error:', error);
+    next(error);
+  }
+});
+
+// DELETE /api/youtube/history — remove all of the user's sessions (words stay)
+router.delete('/history', async (req, res, next) => {
+  try {
+    const { data, error } = await deleteOwnedLessons(req.supabase, req.user.id);
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      deleted: (data || []).length,
+    });
+  } catch (error) {
+    console.error('Clear history error:', error);
+    next(error);
+  }
+});
+
+// DELETE /api/youtube/lessons/:id — remove one session (words stay)
+router.delete('/lessons/:id', async (req, res, next) => {
+  try {
+    const { error: idError, value: lessonId } = Joi.string()
+      .uuid()
+      .required()
+      .validate(req.params.id);
+    if (idError) {
+      idError.isJoi = true;
+      return next(idError);
+    }
+
+    const { data, error } = await deleteOwnedLessons(
+      req.supabase,
+      req.user.id,
+      lessonId
+    );
+    if (error) throw error;
+    if (!data?.length) {
+      return res.status(404).json({
+        error: 'lesson_not_found',
+        message: 'Lesson not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      lessonId,
+      deleted: true,
+    });
+  } catch (error) {
+    console.error('Delete lesson error:', error);
     next(error);
   }
 });
