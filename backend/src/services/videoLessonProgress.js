@@ -128,9 +128,19 @@ export function hydrateLessonResponse(lesson) {
   };
 }
 
+function newestByUpdatedAt(rows) {
+  const list = [...(rows || [])];
+  list.sort((a, b) => {
+    const aTime = Date.parse(a.updated_at || a.created_at || 0) || 0;
+    const bTime = Date.parse(b.updated_at || b.created_at || 0) || 0;
+    return bTime - aTime;
+  });
+  return list[0] || null;
+}
+
 /**
- * Prefer an explicit lesson id, otherwise the newest unfinished row for this video.
- * Completed lessons are never reused — a new extract should start a new session.
+ * Prefer an explicit lesson id, then the newest unfinished row for this video,
+ * then the newest completed row (revisit without creating a duplicate).
  */
 export function pickLessonToReuse(lessons, { lessonId, videoId } = {}) {
   const rows = lessons || [];
@@ -139,16 +149,10 @@ export function pickLessonToReuse(lessons, { lessonId, videoId } = {}) {
     if (match) return match.id;
   }
   if (!videoId) return null;
-  const unfinished = rows.filter(
-    (row) => row.video_id === videoId && row.status !== 'completed'
-  );
-  if (!unfinished.length) return null;
-  unfinished.sort((a, b) => {
-    const aTime = Date.parse(a.updated_at || a.created_at || 0) || 0;
-    const bTime = Date.parse(b.updated_at || b.created_at || 0) || 0;
-    return bTime - aTime;
-  });
-  return unfinished[0].id;
+  const sameVideo = rows.filter((row) => row.video_id === videoId);
+  if (!sameVideo.length) return null;
+  const unfinished = sameVideo.filter((row) => row.status !== 'completed');
+  return (newestByUpdatedAt(unfinished) || newestByUpdatedAt(sameVideo))?.id || null;
 }
 
 export function pickProgressFields(body, now = new Date()) {
@@ -164,6 +168,7 @@ export function pickProgressFields(body, now = new Date()) {
   if (body.quizAnswers !== undefined) patch.quiz_answers = body.quizAnswers;
   if (body.status !== undefined) patch.status = body.status;
   if (body.userCefrLevel !== undefined) patch.user_cefr_level = body.userCefrLevel;
+  if (body.title !== undefined) patch.title = String(body.title).trim();
   patch.updated_at = now.toISOString();
   return patch;
 }

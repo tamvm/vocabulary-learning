@@ -11,6 +11,7 @@ import {
   lessonNeedsReanalyze,
   lessonScoreLabel,
   lessonThumbnail,
+  reuseSavedLessonId,
   reuseUnfinishedLessonId,
   statusTone,
   stepLabel,
@@ -43,6 +44,7 @@ const completed = {
   current_step: LEARN_STEPS.QUIZ,
   quiz_score: 6,
   quiz_total: 8,
+  video_id: 'abcdefghijk',
   thumbnail_url: 'https://example.com/thumb.jpg',
 };
 
@@ -88,7 +90,17 @@ assertEqual(
 assertEqual(
   reuseUnfinishedLessonId([completed], 'abcdefghijk'),
   null,
-  'does not reuse completed session'
+  'does not reuse completed session as unfinished'
+);
+assertEqual(
+  reuseSavedLessonId([completed], 'abcdefghijk'),
+  'b',
+  'revisit uses completed session for the same video'
+);
+assertEqual(
+  reuseSavedLessonId([completed, unfinished], 'abcdefghijk'),
+  'a',
+  'revisit prefers unfinished over completed'
 );
 assertEqual(
   lessonNeedsReanalyze({

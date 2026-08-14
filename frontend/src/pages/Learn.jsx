@@ -21,7 +21,7 @@ import {
   LEARN_STEPS as STEPS,
   extractYoutubeId,
   lessonNeedsReanalyze,
-  reuseUnfinishedLessonId,
+  reuseSavedLessonId,
   prepareStepLabel,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
@@ -130,10 +130,11 @@ function StepVocab({
       <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 mb-6">
         <button
           onClick={onBack}
-          className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-          title="Back"
+          className="flex items-center gap-1.5 px-2 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition text-sm font-medium text-gray-600 dark:text-gray-300"
+          title="All videos"
         >
           <ChevronLeft className="w-5 h-5" />
+          <span className="hidden sm:inline">All videos</span>
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="font-semibold text-gray-900 dark:text-white truncate">
@@ -350,6 +351,8 @@ function StepQuiz({
   onSubmit,
   onRetry,
   onRetake,
+  onWatchAgain,
+  onBack,
   onAnswersChange,
   initialAnswers = {},
 }) {
@@ -488,7 +491,16 @@ function StepQuiz({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch gap-3">
+          {onWatchAgain && (
+            <button
+              onClick={onWatchAgain}
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium rounded-lg transition"
+            >
+              <BookOpen className="w-4 h-4" />
+              Watch again
+            </button>
+          )}
           {onRetake && (
             <button
               onClick={onRetake}
@@ -503,7 +515,7 @@ function StepQuiz({
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium rounded-lg transition"
           >
             <RotateCcw className="w-4 h-4" />
-            Try Another Video
+            Your videos
           </button>
         </div>
       </div>
@@ -512,6 +524,25 @@ function StepQuiz({
 
   return (
     <div className="max-w-2xl mx-auto">
+      {onBack && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            All videos
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            Back to study
+          </button>
+        </div>
+      )}
       {/* Progress bar */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
@@ -707,6 +738,7 @@ export default function Learn() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resumeLoadingId, setResumeLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
   const [highlightsLoading, setHighlightsLoading] = useState(false);
   const highlightsAttemptedRef = useRef(new Set());
 
@@ -848,6 +880,27 @@ export default function Learn() {
       setDeletingId(null);
     }
   }, [searchParams, setSearchParams]);
+
+  const handleRenameLesson = useCallback(async (id, title) => {
+    if (!id || !title) return;
+    setRenamingId(id);
+    try {
+      await youtubeAPI.saveProgress(id, { title });
+      setHistory((prev) =>
+        (prev || []).map((lesson) =>
+          lesson.id === id ? { ...lesson, title } : lesson
+        )
+      );
+      setVideoInfo((prev) =>
+        prev && lessonId === id ? { ...prev, title } : prev
+      );
+      toast.success('Title saved');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to rename');
+    } finally {
+      setRenamingId(null);
+    }
+  }, [lessonId]);
 
   const handleClearHistory = useCallback(async () => {
     if (!(history || []).length) return;
@@ -1052,13 +1105,26 @@ export default function Learn() {
   }, [analyzeVideo, applyHydratedLesson, generateQuiz, persistProgress]);
 
   const handleAnalyze = useCallback(async (videoUrl) => {
-    const reuseId = reuseUnfinishedLessonId(history, extractYoutubeId(videoUrl));
+    const reuseId = reuseSavedLessonId(history, extractYoutubeId(videoUrl));
     if (reuseId) {
+      toast('Opening your saved video…', { icon: 'ℹ️' });
       await resumeLesson(reuseId, 'resume');
       return;
     }
     await analyzeVideo(videoUrl, null);
   }, [analyzeVideo, history, resumeLesson]);
+
+  const handleReextract = useCallback(async (lesson) => {
+    const videoUrl = lesson?.video_url || lesson?.videoUrl;
+    if (!videoUrl) {
+      toast.error('This video has no saved URL');
+      return;
+    }
+    if (!confirm('Re-extract this video? Vocabulary will be refreshed from the transcript.')) {
+      return;
+    }
+    await analyzeVideo(videoUrl, lesson.id);
+  }, [analyzeVideo]);
 
   useEffect(() => {
     loadHistory();
@@ -1254,6 +1320,9 @@ export default function Learn() {
 
   // ── Reset ────────────────────────────────────────────
   const handleRetry = () => {
+    if (lessonId) {
+      persistProgress(lessonId, { currentStep: step });
+    }
     setStep(STEPS.URL);
     setVideoInfo(null);
     setVocabulary([]);
@@ -1270,9 +1339,41 @@ export default function Learn() {
     loadHistory();
   };
 
+  const goToStep = (target) => {
+    if (target === STEPS.URL) {
+      handleRetry();
+      return;
+    }
+    if (!lessonId) return;
+    if (target === STEPS.VOCAB) {
+      setStep(STEPS.VOCAB);
+      persistProgress(lessonId, { currentStep: STEPS.VOCAB });
+      return;
+    }
+    if (target === STEPS.STUDY) {
+      if (!studyWords.length) {
+        setStudyWords(vocabulary.filter((v) => !v.isKnown));
+      }
+      setStep(STEPS.STUDY);
+      persistProgress(lessonId, { currentStep: STEPS.STUDY });
+      return;
+    }
+    if (target === STEPS.QUIZ) {
+      setStep(STEPS.QUIZ);
+      persistProgress(lessonId, { currentStep: STEPS.QUIZ });
+      if (!questions.length) {
+        generateQuiz({
+          videoUrl: currentVideoUrl,
+          id: lessonId,
+          words: studyWords.length ? studyWords : vocabulary.filter((v) => !v.isKnown),
+        });
+      }
+    }
+  };
+
   // ── Step indicator ───────────────────────────────────
   const steps = [
-    { num: 1, label: 'Video', active: step >= STEPS.URL, current: step === STEPS.URL },
+    { num: 1, label: 'Videos', active: step >= STEPS.URL, current: step === STEPS.URL },
     { num: 2, label: 'Vocabulary', active: step >= STEPS.VOCAB, current: step === STEPS.VOCAB },
     { num: 3, label: 'Study', active: step >= STEPS.STUDY, current: step === STEPS.STUDY },
     { num: 4, label: 'Quiz', active: step >= STEPS.QUIZ, current: step === STEPS.QUIZ },
@@ -1290,7 +1391,20 @@ export default function Learn() {
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>
-                <div className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-2 ${
+                    s.num === 1 || lessonId ? 'cursor-pointer' : ''
+                  }`}
+                  onClick={() => {
+                    if (s.num === 1 || lessonId) goToStep(s.num);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    if (s.num === 1 || lessonId) goToStep(s.num);
+                  }}
+                  role={s.num === 1 || lessonId ? 'button' : undefined}
+                  tabIndex={s.num === 1 || lessonId ? 0 : undefined}
+                >
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition ${
                       s.current
@@ -1345,12 +1459,14 @@ export default function Learn() {
             historyLoading={historyLoading}
             resumeLoadingId={resumeLoadingId}
             onContinue={(id) => resumeLesson(id, 'resume')}
-            onReview={(id) => resumeLesson(id, 'review')}
             onRetake={(id) => resumeLesson(id, 'retake')}
             onDelete={handleDeleteLesson}
             onClearAll={handleClearHistory}
+            onRename={handleRenameLesson}
+            onReextract={handleReextract}
             deletingId={deletingId}
             prepareJob={prepareJob}
+            renamingId={renamingId}
           />
         )}
 
@@ -1378,10 +1494,7 @@ export default function Learn() {
             summary={summary}
             studyWords={studyWords}
             vocabulary={vocabulary}
-            onBack={() => {
-              setStep(STEPS.VOCAB);
-              persistProgress(lessonId, { currentStep: STEPS.VOCAB });
-            }}
+            onBack={handleRetry}
             onContinueQuiz={handleContinueToQuiz}
             onAddStudyWord={handleAddStudyWord}
             onGenerateHighlights={() => generateHighlights({ auto: false })}
@@ -1411,6 +1524,8 @@ export default function Learn() {
                 onSubmit={handleQuizSubmit}
                 onRetry={handleRetry}
                 onRetake={handleRetakeQuiz}
+                onWatchAgain={() => goToStep(STEPS.STUDY)}
+                onBack={() => goToStep(STEPS.STUDY)}
               />
             ) : (
               <div className="max-w-2xl mx-auto text-center py-12">
@@ -1421,7 +1536,7 @@ export default function Learn() {
                   onClick={handleRetry}
                   className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition"
                 >
-                  Try Another Video
+                  Your videos
                 </button>
               </div>
             )}

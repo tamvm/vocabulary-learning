@@ -43,6 +43,7 @@ const progressSchema = Joi.object({
   quizAnswers: Joi.object().max(20),
   status: Joi.string().valid('analyzed', 'quiz_generated', 'completed'),
   userCefrLevel: Joi.string().max(10),
+  title: Joi.string().trim().min(1).max(200),
 }).min(1);
 
 function normalizeChapters(chapters) {
@@ -474,7 +475,7 @@ router.get('/history', async (req, res, next) => {
       .select(HISTORY_LIST_COLUMNS)
       .eq('user_id', req.user.id)
       .order('updated_at', { ascending: false })
-      .limit(20);
+      .limit(100);
 
     if (error) {
       const fallback = await req.supabase
@@ -482,7 +483,7 @@ router.get('/history', async (req, res, next) => {
         .select(HISTORY_LIST_COLUMNS_FALLBACK)
         .eq('user_id', req.user.id)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(100);
       if (fallback.error) throw fallback.error;
       lessons = fallback.data || [];
     } else {
