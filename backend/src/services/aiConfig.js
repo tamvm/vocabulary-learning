@@ -29,6 +29,13 @@ export function resolveAiProvider(name) {
   return raw;
 }
 
+export function lookupAiProviderConfig(providers, name) {
+  const raw = String(name || '').trim();
+  if (providers[raw]) return providers[raw];
+  const resolved = resolveAiProvider(raw);
+  return providers[resolved] || null;
+}
+
 export function providerNeedsApiKey(provider) {
   return KEYED_PROVIDERS.has(resolveAiProvider(provider));
 }

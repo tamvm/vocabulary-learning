@@ -8,6 +8,7 @@ import {
 import {
   configurationError,
   createPublicAiError,
+  lookupAiProviderConfig,
   resolveAiProvider,
 } from './aiConfig.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
@@ -85,17 +86,22 @@ class AIService {
         baseUrl: 'https://opencode.ai/zen/go/v1',
         defaultModel: 'mimo-v2.5',
       },
+      'opencode/go': {
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        defaultModel: 'mimo-v2.5',
+      },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
         defaultModel: 'llama3.2:latest',
       },
     };
 
-    const providerName = resolveAiProvider(
+    const providerName = String(
       process.env.AI_PROVIDER
         || (String(process.env.OPENCODE_API_KEY || '').trim() ? 'opencode' : 'openai')
-    );
-    const providerDefaults = this.providers[providerName] || {};
+    ).trim();
+    const providerDefaults =
+      lookupAiProviderConfig(this.providers, providerName) || {};
     const configuredModel = String(
       process.env.AI_MODEL || providerDefaults.defaultModel || 'gpt-4o-mini'
     ).trim();
@@ -770,7 +776,7 @@ Provide only valid JSON without additional text.`;
   }
 
   async makeRequest(endpoint, data, options = {}) {
-    const provider = this.providers[this.config.provider];
+    const provider = lookupAiProviderConfig(this.providers, this.config.provider);
     if (!provider) {
       throw new Error(`Unknown AI provider: ${this.config.provider}`);
     }
@@ -781,12 +787,12 @@ Provide only valid JSON without additional text.`;
       'Content-Type': 'application/json',
     };
 
-    // Add authentication based on provider
+    const resolved = resolveAiProvider(this.config.provider);
     if (
-      this.config.provider === 'ollama-cloud' ||
-      this.config.provider === 'openai' ||
-      this.config.provider === 'opencode' ||
-      this.config.provider === 'opencode-go'
+      resolved === 'ollama-cloud' ||
+      resolved === 'openai' ||
+      resolved === 'opencode' ||
+      resolved === 'opencode-go'
     ) {
       if (!this.config.apiKey) {
         throw createPublicAiError(new Error('API key is required for this provider'));
@@ -814,7 +820,7 @@ Provide only valid JSON without additional text.`;
 
   async testConnection() {
     try {
-      const provider = this.providers[this.config.provider];
+      const provider = lookupAiProviderConfig(this.providers, this.config.provider);
       if (!provider) {
         return {
           success: false,
@@ -825,7 +831,7 @@ Provide only valid JSON without additional text.`;
       let testEndpoint;
       const headers = {};
 
-      if (this.config.provider === 'ollama-local') {
+      if (resolveAiProvider(this.config.provider) === 'ollama-local') {
         testEndpoint = `${provider.baseUrl}/api/tags`;
       } else {
         testEndpoint = `${provider.baseUrl}/models`;

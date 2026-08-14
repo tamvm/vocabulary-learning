@@ -9,6 +9,7 @@ import {
   createPublicAiError,
   publicAiFailure,
   resolveAiProvider,
+  lookupAiProviderConfig,
 } from './src/services/aiConfig.js';
 
 function assert(cond, msg) {
@@ -73,5 +74,14 @@ assert(err.message === AI_NOT_CONFIGURED_MESSAGE, 'public message');
 
 assert(resolveAiProvider('opencode/go') === 'opencode-go', 'opencode/go alias');
 assert(resolveAiProvider('opencode') === 'opencode', 'opencode unchanged');
+assert(
+  lookupAiProviderConfig({ 'opencode-go': { id: 1 } }, 'opencode/go').id === 1,
+  'lookup slash alias'
+);
+assert(
+  lookupAiProviderConfig({ 'opencode/go': { id: 2 }, 'opencode-go': { id: 1 } }, 'opencode/go')
+    .id === 2,
+  'lookup prefers exact key'
+);
 
 console.log('test_ai_config: OK');
