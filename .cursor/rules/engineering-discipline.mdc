@@ -37,7 +37,7 @@ Raise scope concerns once; after the user picks expansion / hold / reduction, re
 
 ## Verification before claims
 
-- No "tests pass", "fixed", "ready", or "deployed" without fresh command output (or browser evidence) in this turn.
+- No "tests pass", "fixed", "ready", or "deployed" without fresh command output in this turn. Do **not** use production browser/curl smoke as that evidence.
 - Words like "should", "probably", "looks good" are not verification.
 - For auth/AI/Supabase paths: exercise the real gate — do not claim safety from reading code alone.
 - Pair with Karpathy goal-driven loops: define verify steps before claiming done.
