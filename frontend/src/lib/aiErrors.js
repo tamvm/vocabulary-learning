@@ -10,10 +10,22 @@ export function isAiFailureStub(analysis) {
 }
 
 export function apiErrorMessage(err, fallback = 'Request failed') {
-  return (
+  const fromBody =
     err?.response?.data?.message ||
-    (typeof err?.response?.data?.error === 'string' ? err.response.data.error : null) ||
-    err?.message ||
-    fallback
-  );
+    (typeof err?.response?.data?.error === 'string' ? err.response.data.error : null);
+  if (fromBody) return fromBody;
+
+  const raw = String(err?.message || '');
+  const code = err?.code || err?.cause?.code;
+  const noResponse = !err?.response;
+  if (
+    noResponse &&
+    (code === 'ERR_NETWORK' ||
+      code === 'ECONNRESET' ||
+      /^Network Error$/i.test(raw))
+  ) {
+    return 'The connection was interrupted before the server finished. Generating highlights can hit a proxy timeout — please try again.';
+  }
+
+  return raw || fallback;
 }

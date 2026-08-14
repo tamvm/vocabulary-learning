@@ -6,6 +6,10 @@ import {
   sampleTranscriptForAnalysis,
   capCues,
   withTimeout,
+  PROXY_REQUEST_BUDGET_MS,
+  HIGHLIGHTS_ROUTE_TIMEOUT_MS,
+  HIGHLIGHTS_FIRST_PASS_MS,
+  HIGHLIGHTS_RETRY_PASS_MS,
 } from './src/services/youtubeAnalyzeHelpers.js';
 
 function assert(cond, msg) {
@@ -42,5 +46,14 @@ try {
   timedOut = err.code === 'timeout';
 }
 assert(timedOut, 'withTimeout rejects on timeout');
+
+assert(
+  HIGHLIGHTS_FIRST_PASS_MS + HIGHLIGHTS_RETRY_PASS_MS < HIGHLIGHTS_ROUTE_TIMEOUT_MS,
+  'highlights AI passes fit inside route timeout'
+);
+assert(
+  HIGHLIGHTS_ROUTE_TIMEOUT_MS < PROXY_REQUEST_BUDGET_MS,
+  'highlights route responds before Cloudflare ~100s drop'
+);
 
 console.log('test_youtube_analyze_helpers: OK');
