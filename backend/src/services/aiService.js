@@ -65,7 +65,14 @@ class AIService {
       },
       'opencode': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        defaultModel: 'deepseek-v4-flash',
+        // deepseek-v4-flash is flaky on OpenCode Go (upstream drops / model-name bugs).
+        // Prefer a stable Go chat-completions model when AI_MODEL is unset.
+        defaultModel: 'kimi-k2.7-code',
+      },
+      // Alias used in Coolify / other apps (e.g. LLM_PROVIDER=opencode-go)
+      'opencode-go': {
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        defaultModel: 'kimi-k2.7-code',
       },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
@@ -73,10 +80,20 @@ class AIService {
       },
     };
 
+    const providerName = String(
+      process.env.AI_PROVIDER || 'openai'
+    ).trim();
+    const providerDefaults = this.providers[providerName] || {};
+    const configuredModel = String(
+      process.env.AI_MODEL || providerDefaults.defaultModel || 'gpt-4o-mini'
+    ).trim();
+
     this.config = {
-      provider: process.env.AI_PROVIDER || 'openai',
-      apiKey: process.env.AI_API_KEY || '',
-      model: process.env.AI_MODEL || 'gpt-4o-mini',
+      provider: providerName,
+      apiKey: String(
+        process.env.AI_API_KEY || process.env.OPENCODE_API_KEY || ''
+      ).trim(),
+      model: configuredModel,
       localHost: process.env.OLLAMA_LOCAL_HOST || 'http://localhost:11434',
     };
   }
@@ -150,7 +167,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
         ],
         temperature: 0.7,
         max_tokens: 1000,
-      });
+      }, { timeout: 60000 });
 
       if (response.choices && response.choices[0]) {
         let content = response.choices[0].message.content;
@@ -167,7 +184,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
       }
 
       throw new Error('No response from AI service');
-    } catch (error) {
+      } catch (error) {
       console.error('AI word analysis error:', error);
 
       // Prefer a real dictionary entry over a misleading stub when AI is down
@@ -180,10 +197,12 @@ Ensure the response is valid JSON only, without any additional text or explanati
         console.error('Free dictionary fallback failed:', dictError);
       }
 
+      const cause = error?.message || 'unknown error';
       const unavailable = new Error(
-        'AI service unavailable. Word lookup failed — try again shortly.'
+        `AI service unavailable (${cause}). Word lookup failed — try again shortly.`
       );
       unavailable.code = 'AI_UNAVAILABLE';
+      unavailable.cause = error;
       throw unavailable;
     }
   }
@@ -744,7 +763,12 @@ Provide only valid JSON without additional text.`;
     };
 
     // Add authentication based on provider
-    if (this.config.provider === 'ollama-cloud' || this.config.provider === 'openai' || this.config.provider === 'opencode') {
+    if (
+      this.config.provider === 'ollama-cloud' ||
+      this.config.provider === 'openai' ||
+      this.config.provider === 'opencode' ||
+      this.config.provider === 'opencode-go'
+    ) {
       if (!this.config.apiKey) {
         throw new Error('API key is required for this provider');
       }
