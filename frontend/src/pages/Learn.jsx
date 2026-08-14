@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -18,6 +18,7 @@ import {
 import { youtubeAPI, wordsAPI } from '@/lib/api';
 import { getCefrColor } from '@/lib/utils';
 import { LEARN_STEPS as STEPS } from '@/lib/learnSession';
+import { displaySummary } from '@/lib/lessonSummary';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
@@ -33,11 +34,12 @@ function StepVocab({
   vocabulary,
   userCefrLevel,
   summary = '',
-  cues = [],
   onLearn,
   onSkip,
   onToggleKnown,
   onBack,
+  onGenerateHighlights,
+  highlightsLoading = false,
   saving,
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
@@ -138,7 +140,13 @@ function StepVocab({
         </div>
       </div>
 
-      <LessonSummary summary={summary} cues={cues} defaultOpen className="mb-6" />
+      <LessonSummary
+        summary={summary}
+        defaultOpen
+        className="mb-6"
+        onGenerate={onGenerateHighlights}
+        generating={highlightsLoading}
+      />
 
       {/* Stats bar */}
       <div className="flex items-center justify-between mb-4">
@@ -689,6 +697,49 @@ export default function Learn() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resumeLoadingId, setResumeLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
+  const highlightsAttemptedRef = useRef(new Set());
+
+  const highlightsLoadingRef = useRef(false);
+  const generateHighlights = useCallback(async ({ auto = false } = {}) => {
+    if (!lessonId || highlightsLoadingRef.current) return;
+    highlightsLoadingRef.current = true;
+    setHighlightsLoading(true);
+    try {
+      const response = await youtubeAPI.generateHighlights(lessonId);
+      const nextSummary = response.data?.summary || '';
+      setSummary(nextSummary);
+      if (Array.isArray(response.data?.chapters) && response.data.chapters.length) {
+        setChapters(response.data.chapters);
+      }
+      if (!nextSummary) {
+        toast.error(
+          response.data?.message || 'Could not generate highlights for this video'
+        );
+      } else if (!auto) {
+        toast.success('Highlights ready');
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to generate highlights';
+      if (!auto) toast.error(msg);
+      else console.warn('Auto highlights failed:', msg);
+    } finally {
+      highlightsLoadingRef.current = false;
+      setHighlightsLoading(false);
+    }
+  }, [lessonId]);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    if (step !== STEPS.VOCAB && step !== STEPS.STUDY) return;
+    if (displaySummary(summary).source !== 'empty') return;
+    if (highlightsAttemptedRef.current.has(lessonId)) return;
+    highlightsAttemptedRef.current.add(lessonId);
+    generateHighlights({ auto: true });
+  }, [lessonId, step, summary, generateHighlights]);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -1177,11 +1228,12 @@ export default function Learn() {
             vocabulary={vocabulary}
             userCefrLevel={userCefrLevel}
             summary={summary}
-            cues={cues}
             onLearn={handleLearn}
             onSkip={handleSkipToStudy}
             onToggleKnown={handleToggleKnown}
             onBack={handleRetry}
+            onGenerateHighlights={() => generateHighlights({ auto: false })}
+            highlightsLoading={highlightsLoading}
             saving={saving}
           />
         )}
@@ -1199,6 +1251,8 @@ export default function Learn() {
             }}
             onContinueQuiz={handleContinueToQuiz}
             onAddStudyWord={handleAddStudyWord}
+            onGenerateHighlights={() => generateHighlights({ auto: false })}
+            highlightsLoading={highlightsLoading}
             quizLoading={loading}
           />
         )}

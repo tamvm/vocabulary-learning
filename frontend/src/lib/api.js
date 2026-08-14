@@ -267,6 +267,9 @@ export const youtubeAPI = {
   getLesson: (id) =>
     api.get(`/youtube/lessons/${id}`),
 
+  generateHighlights: (id) =>
+    api.post(`/youtube/lessons/${id}/highlights`, {}, { timeout: 180000 }),
+
   saveProgress: (id, data) =>
     api.patch(`/youtube/lessons/${id}/progress`, data),
 

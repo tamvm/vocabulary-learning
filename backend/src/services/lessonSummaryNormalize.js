@@ -33,6 +33,26 @@ export function looksLikeTranscriptDump(text, transcript = '') {
   return false;
 }
 
+/**
+ * Pull a summary string/list from common AI JSON shapes.
+ */
+export function extractLessonSummaryRaw(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return '';
+  }
+  const candidates = [
+    parsed.summary,
+    parsed.highlights,
+    parsed.bullets,
+    parsed.takeaways,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    if (Array.isArray(raw) && raw.length) return raw;
+  }
+  return '';
+}
+
 export function parseAiJsonObject(content) {
   if (!content || typeof content !== 'string') {
     throw new Error('Empty AI content');

@@ -12,7 +12,6 @@ import {
   sampleTranscriptForAnalysis,
   capCues,
 } from '../services/youtubeAnalyzeHelpers.js';
-
 const router = express.Router();
 
 const CHAPTER_MIN_DURATION_SEC = 8 * 60; // AI chapters if no YT chapters and long enough
@@ -609,6 +608,99 @@ router.get('/lessons/:id', async (req, res, next) => {
     res.json(hydrateLessonResponse(lesson));
   } catch (error) {
     console.error('Get lesson error:', error);
+    next(error);
+  }
+});
+
+// POST /api/youtube/lessons/:id/highlights — generate from cached transcript
+router.post('/lessons/:id/highlights', async (req, res, next) => {
+  try {
+    const { error: idError, value: lessonId } = Joi.string()
+      .uuid()
+      .required()
+      .validate(req.params.id);
+    if (idError) {
+      idError.isJoi = true;
+      return next(idError);
+    }
+
+    const { data: lesson, error } = await req.supabase
+      .from('video_lessons')
+      .select(
+        'id, title, transcript_text, summary, chapters, duration_seconds'
+      )
+      .eq('id', lessonId)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!lesson) {
+      return res.status(404).json({
+        error: 'lesson_not_found',
+        message: 'Lesson not found',
+      });
+    }
+
+    const transcript = lesson.transcript_text || '';
+    if (transcript.trim().length < 80) {
+      return res.status(400).json({
+        error: 'transcript_missing',
+        message: 'This session has no transcript to summarize. Re-analyze the video.',
+      });
+    }
+
+    const existingChapters = normalizeChapters(lesson.chapters);
+    const summaryText = sampleTranscriptForAnalysis(
+      transcript,
+      ANALYZE_SUMMARY_SAMPLE_CHARS
+    );
+
+    console.log(`📝 Generating highlights for lesson ${lessonId}...`);
+    const result = await aiService.summarizeAndChapter({
+      transcript: summaryText,
+      title: lesson.title || '',
+      durationSeconds: lesson.duration_seconds,
+      existingChapters: existingChapters.length ? existingChapters : null,
+      needChapters: existingChapters.length === 0,
+    });
+
+    const summary = result.summary || '';
+    const chapters = result.chapters?.length
+      ? normalizeChapters(result.chapters)
+      : existingChapters;
+
+    if (!summary) {
+      return res.status(502).json({
+        error: 'highlights_failed',
+        message:
+          'Could not generate highlights for this video. Try again in a moment.',
+        summary: '',
+        chapters,
+      });
+    }
+
+    const { error: updateErr } = await req.supabase
+      .from('video_lessons')
+      .update({
+        summary,
+        chapters: chapters.length ? chapters : lesson.chapters || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', lessonId)
+      .eq('user_id', req.user.id);
+
+    if (updateErr) {
+      console.warn('Could not persist highlights:', updateErr.message);
+    }
+
+    res.json({
+      success: true,
+      lessonId,
+      summary,
+      chapters,
+    });
+  } catch (error) {
+    console.error('Generate highlights error:', error);
     next(error);
   }
 });

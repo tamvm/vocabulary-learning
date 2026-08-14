@@ -3,6 +3,7 @@
  * Run: node backend/test_lesson_summary_normalize.js
  */
 import {
+  extractLessonSummaryRaw,
   looksLikeTranscriptDump,
   normalizeLessonSummary,
   parseAiJsonObject,
@@ -50,5 +51,15 @@ assert(messy.summary === '- A', 'extracts JSON object');
 
 assert(normalizeLessonSummary('  ') === '', 'empty stays empty');
 assert(looksLikeTranscriptDump('') === false, 'empty is not a dump');
+
+assert(
+  extractLessonSummaryRaw({ highlights: ['First takeaway.', 'Second takeaway.'] }).length === 2,
+  'extracts highlights array'
+);
+assert(
+  extractLessonSummaryRaw({ summary: '- A\n- B' }) === '- A\n- B',
+  'extracts summary string'
+);
+assert(extractLessonSummaryRaw({}) === '', 'empty parsed object');
 
 console.log('test_lesson_summary_normalize: OK');

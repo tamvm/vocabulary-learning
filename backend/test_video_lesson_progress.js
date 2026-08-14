@@ -113,6 +113,14 @@ assertEqual(hydrated.questions.length, 1, 'hydrate quiz questions');
 assertEqual(hydrated.quizAnswers[0], 1, 'hydrate quiz answers');
 assertEqual(hydrated.cues.length, 1, 'hydrate cues');
 assertEqual(hydrated.summary, 'A fruit video', 'hydrate summary');
+
+const dumpHydrated = hydrateLessonResponse({
+  ...lesson,
+  summary:
+    'Elon Musk, thank you so much for joining me. >> I just like building things.',
+  transcript_text: 'Elon Musk, thank you so much for joining me.',
+});
+assertEqual(dumpHydrated.summary, '', 'hydrate hides caption-dump summary');
 assertEqual(hydrated.lesson.videoUrl, lesson.video_url, 'hydrate lesson.videoUrl');
 assertDeepEqual(
   buildVideoInfo(lesson),
