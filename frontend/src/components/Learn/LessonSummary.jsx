@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { BookOpen, ChevronDown } from 'lucide-react';
+import { BookOpen, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { displaySummary } from '@/lib/lessonSummary';
 
 export default function LessonSummary({
   summary = '',
   defaultOpen = true,
   className = '',
+  onGenerate,
+  generating = false,
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { text, items, source } = displaySummary(summary);
+  const canGenerate = typeof onGenerate === 'function';
 
   return (
     <div
@@ -47,11 +50,26 @@ export default function LessonSummary({
             <p className="text-sm text-gray-700 dark:text-gray-300">{text}</p>
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No highlights yet for this video. Re-analyze it to generate
-              bullet-point takeaways, or study with the transcript and new
-              words.
+              {generating
+                ? 'Generating bullet-point takeaways from the transcript…'
+                : 'No highlights yet for this video. Generate takeaways from the transcript, or study with the transcript and new words.'}
             </p>
           )}
+          {canGenerate && (source === 'empty' || generating) ? (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={generating}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-60 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+            >
+              {generating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              {generating ? 'Generating…' : 'Generate highlights'}
+            </button>
+          ) : null}
         </div>
       )}
     </div>

@@ -7,6 +7,8 @@ import {
   Subtitles,
   EyeOff,
   Eye,
+  Link2,
+  Unlink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { aiAPI } from '@/lib/api';
@@ -17,14 +19,29 @@ import ChapterBar from './ChapterBar';
 import LessonSummary from './LessonSummary';
 import WordDetailModal, { normalizeWordDetail } from './WordDetailModal';
 
-function PanelShell({ title, children, className = '' }) {
+const FOLLOW_VIDEO_KEY = 'learn.transcriptFollowVideo';
+
+function readFollowVideo() {
+  try {
+    const value = localStorage.getItem(FOLLOW_VIDEO_KEY);
+    if (value === '0' || value === 'false') return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function PanelShell({ title, actions = null, children, className = '' }) {
   return (
     <div
       className={`rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-3 flex flex-col overflow-hidden min-h-0 ${className}`}
     >
-      <h3 className="flex-shrink-0 text-sm font-semibold text-gray-900 dark:text-white mb-2 px-1">
-        {title}
-      </h3>
+      <div className="flex-shrink-0 flex items-center gap-2 mb-2 px-1">
+        <h3 className="flex-1 min-w-0 text-sm font-semibold text-gray-900 dark:text-white">
+          {title}
+        </h3>
+        {actions}
+      </div>
       <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </div>
   );
@@ -63,6 +80,8 @@ export default function StepStudy({
   onBack,
   onContinueQuiz,
   onAddStudyWord,
+  onGenerateHighlights,
+  highlightsLoading = false,
   quizLoading,
 }) {
   const playerRef = useRef(null);
@@ -72,6 +91,7 @@ export default function StepStudy({
   const [showVocab, setShowVocab] = useState(true);
   const [showTranscript, setShowTranscript] = useState(true);
   const [showSummary, setShowSummary] = useState(true);
+  const [followVideo, setFollowVideo] = useState(readFollowVideo);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -170,10 +190,46 @@ export default function StepStudy({
   // Hide words → video + transcript sit side by side
   const sideBySide = !showVocab && showTranscript;
 
+  const toggleFollowVideo = () => {
+    setFollowVideo((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(FOLLOW_VIDEO_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   const transcriptPanel = showTranscript ? (
     <PanelShell
       title={`Transcript (${cues.length} lines)`}
       className={sideBySide ? 'h-full min-h-0 flex-1' : 'h-[50vh]'}
+      actions={
+        <button
+          type="button"
+          onClick={toggleFollowVideo}
+          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border transition ${
+            followVideo
+              ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
+              : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'
+          }`}
+          title={
+            followVideo
+              ? 'Stop scrolling the transcript with the video'
+              : 'Scroll the transcript with the video'
+          }
+          aria-pressed={followVideo}
+        >
+          {followVideo ? (
+            <Link2 className="w-3 h-3" />
+          ) : (
+            <Unlink className="w-3 h-3" />
+          )}
+          Follow
+        </button>
+      }
     >
       <TranscriptPanel
         cues={cues}
@@ -181,6 +237,7 @@ export default function StepStudy({
         onWordClick={(w) => openDetail(w)}
         highlightWord={selectedWord}
         currentTime={currentTime}
+        followVideo={followVideo}
       />
     </PanelShell>
   ) : null;
@@ -291,7 +348,13 @@ export default function StepStudy({
       </div>
 
       {showSummary ? (
-        <LessonSummary summary={summary} cues={cues} defaultOpen className="mb-4" />
+        <LessonSummary
+          summary={summary}
+          defaultOpen
+          className="mb-4"
+          onGenerate={onGenerateHighlights}
+          generating={highlightsLoading}
+        />
       ) : null}
 
       {/* Stable first child keeps VideoPlayer mounted across layout toggles */}

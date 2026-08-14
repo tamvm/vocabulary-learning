@@ -44,6 +44,7 @@ export default function TranscriptPanel({
   highlightWord = null,
   currentTime = null,
   activeStart = null,
+  followVideo = true,
 }) {
   const listRef = useRef(null);
   const activeRef = useRef(null);
@@ -64,6 +65,7 @@ export default function TranscriptPanel({
   }, [items, currentTime, activeStart]);
 
   useEffect(() => {
+    if (!followVideo) return;
     if (activeIndex < 0 || activeIndex === lastScrolledIdx.current) return;
     lastScrolledIdx.current = activeIndex;
     const parent = listRef.current;
@@ -82,7 +84,7 @@ export default function TranscriptPanel({
       parent.clientHeight / 2 +
       el.offsetHeight / 2;
     parent.scrollTo({ top: Math.max(0, next), behavior: 'smooth' });
-  }, [activeIndex]);
+  }, [activeIndex, followVideo]);
 
   if (!items.length) {
     return (
