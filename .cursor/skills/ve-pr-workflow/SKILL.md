@@ -2,13 +2,15 @@
 name: ve-pr-workflow
 description: >-
   Start a fix/feature in a git worktree, open a PR, babysit CI and reviews until
-  [ready], then on user request merge to main, verify deploy, smoke-test the app,
-  and remove the worktree.
+  [ready], then on user request merge to main and remove the worktree.
+  Do not production-smoke or babysit Coolify Deploy unless asked.
 ---
 
 # Magic English (vocabulary-learning) PR worktree workflow
 
-Use this skill when starting a fix/feature, babysitting a PR, or when the user asks to merge/deploy.
+Use this skill when starting a fix/feature, babysitting a PR, or when the user asks to merge.
+
+Prefer the **lean defaults** below. Do not add verify/deploy/browser steps that this skill does not require.
 
 CI: self-hosted GitHub Actions — `.github/workflows/ci.yml`  
 Runner setup: `docs/ci-self-hosted-runner.md`  
@@ -94,7 +96,7 @@ Loop until merge-ready:
 
 Do **not** merge until the user explicitly asks. A merge ask still requires every review thread to be fixed or replied-to first.
 
-## 4. Merge + verify deploy
+## 4. Merge (no production smoke)
 
 Only after the user says to merge.
 
@@ -108,14 +110,28 @@ gh pr merge <N> --merge
 
 Use a merge commit (no squash) to match repo rules.
 
-Push/merge to `main` should run **CI** then **Coolify Deploy** (project `i8luqt7n49kugwqwfbcyrfvl`). Then:
+Push/merge to `main` queues **CI** then **Coolify Deploy** (project `i8luqt7n49kugwqwfbcyrfvl`) automatically. **Stop there.**
 
-1. Watch `gh run list --workflow "Coolify Deploy"` and Coolify Deployments. If stuck, `gh workflow run coolify-deploy.yml` or Redeploy in Coolify UI (do not mutate env/secrets routinely).
-2. Smoke-test the app in a **browser** at **https://voca.kenchange.com**. Do not rely on curl alone for UI regressions.
-3. Confirm auth still works (Supabase session) and learning flows load.
-4. Report deploy status and smoke-test result to the user.
+- Do **not** production-smoke: no browser and no curl against **https://voca.kenchange.com** (or the API host).
+- Do **not** watch Coolify Deploy, poll `gh run list --workflow "Coolify Deploy"`, or confirm auth/learning flows on prod.
+- Do **not** report a smoke-test result. Mention merge SHA / PR number only.
+- If the user later says deploy is stuck, then (and only then) check the workflow or Redeploy in Coolify UI. Do not mutate env/secrets routinely.
 
-Do not change Coolify env vars or secrets during routine deploy.
+## Lean defaults (speed / tokens)
+
+Default **off** unless the user asks. These steps are the usual token burn on routine updates:
+
+| Skip | Why |
+| --- | --- |
+| Production smoke / prod browser / prod curl | User verifies prod; agents must not |
+| Deploy watch / Coolify UI / workflow poll after merge | CI+deploy is automatic; watching burns a turn loop |
+| Extra subagents (tester, reviewer, planner, docs-manager, computerUse) | One agent, surgical diff |
+| CI refresh loops | One status check after push; fix if red; do not sit and poll |
+| `npm test` / `npm run build` / frontend lint on docs/rules-only PRs | Nothing to compile |
+| Re-reading this skill + all rules on every follow-up | You already have the lean list |
+| Invented verify (auth matrix, mobile pass, “just in case” screenshots) | Only when the change is UI or the user asks |
+
+Keep: worktree, conventional commits, open PR (`draft: false`), review-thread gate, `[ready]` strip/re-add, merge only on ask, worktree cleanup.
 
 ## 5. Cleanup (required after merge)
 
@@ -140,3 +156,5 @@ If the worktree is dirty, stop and ask — do not force-remove silently.
 - Force-push to `main` or skip hooks
 - Rely only on title automation without addressing review comments
 - Mutate Coolify secrets as part of routine deploy (use `coolify-sync-domain.yml` only when asked to change the public domain / CORS)
+- Production-smoke the live app (browser or curl) after merge
+- Babysit Coolify Deploy or poll deploy workflows unless the user asks
