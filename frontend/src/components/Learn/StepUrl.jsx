@@ -198,9 +198,7 @@ export default function StepUrl({
     const hay = `${lesson.title || ''} ${lesson.video_id || ''} ${lesson.video_url || ''}`.toLowerCase();
     return hay.includes(needle);
   });
-  const remaining = needle
-    ? filtered
-    : filtered.filter((lesson) => lesson.id !== unfinished?.id);
+  const remaining = filtered;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -333,8 +331,6 @@ export default function StepUrl({
             </div>
           </div>
         </div>
-      )}
-
       )}
 
       <div className="mt-10">

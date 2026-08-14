@@ -23,6 +23,7 @@ import {
   lessonNeedsReanalyze,
   reuseSavedLessonId,
   prepareStepLabel,
+  upsertHistoryLesson,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
 import { apiErrorMessage } from '@/lib/aiErrors';
@@ -134,7 +135,7 @@ function StepVocab({
           title="All videos"
         >
           <ChevronLeft className="w-5 h-5" />
-          <span className="hidden sm:inline">All videos</span>
+          <span>All videos</span>
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="font-semibold text-gray-900 dark:text-white truncate">
@@ -744,6 +745,7 @@ export default function Learn() {
 
   const highlightsLoadingRef = useRef(false);
   const highlightsPollGenRef = useRef(0);
+  const preparePollGenRef = useRef(0);
   const generateHighlights = useCallback(async ({ auto = false } = {}) => {
     if (!lessonId || highlightsLoadingRef.current) return;
     highlightsLoadingRef.current = true;
@@ -960,6 +962,33 @@ export default function Learn() {
     }
   }, []);
 
+  const pollUntilVocab = useCallback(async (id, pollGen) => {
+    const deadline = Date.now() + 300000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (preparePollGenRef.current !== pollGen) return null;
+      const poll = await youtubeAPI.getLesson(id);
+      if (preparePollGenRef.current !== pollGen) return null;
+      const data = poll.data;
+      setPrepareStep(data.prepareStep || 'vocab');
+      setPrepareJob(data.prepareJob || null);
+      setHistory((prev) =>
+        upsertHistoryLesson(prev, {
+          id,
+          prepare_status: data.prepareStatus,
+          prepare_step: data.prepareStep,
+          title: data.videoInfo?.title || data.lesson?.title,
+          thumbnail_url: data.videoInfo?.thumbnail,
+        })
+      );
+      if (data.vocabReady) return data;
+      if (data.prepareStatus === 'failed') {
+        throw new Error(data.prepareError || 'Could not prepare this video');
+      }
+    }
+    throw new Error('This video is still preparing. Open the session again in a moment.');
+  }, []);
+
   const applyHydratedLesson = useCallback((data, mode = 'resume') => {
     const nextStep =
       mode === 'review'
@@ -1008,23 +1037,28 @@ export default function Learn() {
       }
 
       setPrepareJob(kicked.prepareJob || null);
+      setHistory((prev) =>
+        upsertHistoryLesson(prev, {
+          id: nextLessonId,
+          video_url: videoUrl,
+          video_id: kicked.videoInfo?.videoId,
+          title: kicked.videoInfo?.title,
+          thumbnail_url: kicked.videoInfo?.thumbnail,
+          status: 'analyzed',
+          current_step: STEPS.VOCAB,
+          prepare_status: 'pending',
+          prepare_step: kicked.prepareStep || 'transcript',
+          updated_at: new Date().toISOString(),
+        })
+      );
+      loadHistory();
+      const pollGen = preparePollGenRef.current + 1;
+      preparePollGenRef.current = pollGen;
       let data = kicked;
       if (!kicked.vocabReady && nextLessonId) {
-        const deadline = Date.now() + 300000;
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const poll = await youtubeAPI.getLesson(nextLessonId);
-          data = poll.data;
-          setPrepareStep(data.prepareStep || 'vocab');
-          setPrepareJob(data.prepareJob || null);
-          if (data.vocabReady) break;
-          if (data.prepareStatus === 'failed') {
-            throw new Error(data.prepareError || 'Could not prepare this video');
-          }
-        }
-        if (!data.vocabReady) {
-          throw new Error('This video is still preparing. Open the session again in a moment.');
-        }
+        const polled = await pollUntilVocab(nextLessonId, pollGen);
+        if (!polled) return;
+        data = polled;
       }
 
       setVideoInfo(data.videoInfo || kicked.videoInfo);
@@ -1056,7 +1090,7 @@ export default function Learn() {
       setLoading(false);
       setPrepareStep(null);
     }
-  }, [loadHistory, setSearchParams]);
+  }, [loadHistory, pollUntilVocab, setSearchParams]);
 
   const resumeLesson = useCallback(async (id, mode = 'resume') => {
     if (!id) return;
@@ -1066,6 +1100,39 @@ export default function Learn() {
       const response = await youtubeAPI.getLesson(id);
       const data = response.data;
       const hasQuiz = Array.isArray(data.questions) && data.questions.length > 0;
+
+      if (data.prepareStatus === 'pending' && !data.vocabReady) {
+        const pollGen = preparePollGenRef.current + 1;
+        preparePollGenRef.current = pollGen;
+        setLessonId(id);
+        setCurrentVideoUrl(data.lesson?.videoUrl || '');
+        setVideoInfo(data.videoInfo);
+        setPrepareJob(data.prepareJob || null);
+        setPrepareStep(data.prepareStep || 'transcript');
+        setSearchParams({ lesson: id }, { replace: true });
+        setStep(STEPS.URL);
+        setLoading(true);
+        setHistory((prev) =>
+          upsertHistoryLesson(prev, {
+            id,
+            video_url: data.lesson?.videoUrl,
+            video_id: data.lesson?.videoId,
+            title: data.videoInfo?.title || data.lesson?.title,
+            thumbnail_url: data.videoInfo?.thumbnail,
+            status: data.lesson?.status || 'analyzed',
+            current_step: data.currentStep,
+            prepare_status: 'pending',
+            prepare_step: data.prepareStep,
+            updated_at: data.lesson?.updatedAt || new Date().toISOString(),
+          })
+        );
+        loadHistory();
+        const polled = await pollUntilVocab(id, pollGen);
+        if (!polled) return;
+        applyHydratedLesson(polled, mode);
+        toast.success('Session restored');
+        return;
+      }
 
       if (lessonNeedsReanalyze(data)) {
         toast('This session has no saved vocabulary. Re-extracting the video…', { icon: 'ℹ️' });
@@ -1101,8 +1168,9 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setResumeLoadingId(null);
+      setLoading(false);
     }
-  }, [analyzeVideo, applyHydratedLesson, generateQuiz, persistProgress]);
+  }, [analyzeVideo, applyHydratedLesson, generateQuiz, loadHistory, persistProgress, pollUntilVocab, setSearchParams]);
 
   const handleAnalyze = useCallback(async (videoUrl) => {
     const reuseId = reuseSavedLessonId(history, extractYoutubeId(videoUrl));
@@ -1320,9 +1388,14 @@ export default function Learn() {
 
   // ── Reset ────────────────────────────────────────────
   const handleRetry = () => {
-    if (lessonId) {
+    preparePollGenRef.current += 1;
+    highlightsPollGenRef.current += 1;
+    if (lessonId && step !== STEPS.URL) {
       persistProgress(lessonId, { currentStep: step });
     }
+    setLoading(false);
+    setPrepareJob(null);
+    setPrepareStep(null);
     setStep(STEPS.URL);
     setVideoInfo(null);
     setVocabulary([]);
@@ -1386,6 +1459,18 @@ export default function Learn() {
       </Helmet>
 
       <div className="py-6 px-4 sm:px-6 lg:px-8">
+        {(step !== STEPS.URL || searchParams.get('lesson')) && (
+          <div className="max-w-3xl mx-auto mb-4">
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              All videos
+            </button>
+          </div>
+        )}
         {/* Step indicator */}
         <div className="max-w-3xl mx-auto mb-8">
           <div className="flex items-center justify-center gap-2">

@@ -23,6 +23,8 @@ export const HISTORY_LIST_COLUMNS = [
   'updated_at',
   'current_step',
   'duration_seconds',
+  'prepare_status',
+  'prepare_step',
 ].join(', ');
 
 export const HISTORY_LIST_COLUMNS_FALLBACK = [
