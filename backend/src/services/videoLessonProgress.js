@@ -25,6 +25,7 @@ export const HISTORY_LIST_COLUMNS = [
   'duration_seconds',
   'prepare_status',
   'prepare_step',
+  'prepare_progress',
 ].join(', ');
 
 export const HISTORY_LIST_COLUMNS_FALLBACK = [
@@ -41,6 +42,8 @@ export const HISTORY_LIST_COLUMNS_FALLBACK = [
   'created_at',
   'updated_at',
   'duration_seconds',
+  'prepare_status',
+  'prepare_step',
 ].join(', ');
 
 export function isUnfinishedLesson(lesson) {
@@ -122,6 +125,7 @@ export function hydrateLessonResponse(lesson) {
     summaryError: lesson.summary_error || '',
     prepareStatus: resolvePrepareStatus(lesson),
     prepareStep: lesson.prepare_step || null,
+    prepareProgress: lesson.prepare_progress || '',
     prepareError: lesson.prepare_error || '',
     vocabReady: lesson.vocabulary_snapshot != null,
     prepareJob: buildPrepareJobView(lesson),

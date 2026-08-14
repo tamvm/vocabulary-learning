@@ -16,9 +16,12 @@ import { formatRelativeTime } from '@/lib/utils';
 import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import {
   isUnfinishedLesson,
+  isPreparingLesson,
+  isVocabReady,
   latestUnfinished,
   lessonScoreLabel,
   lessonThumbnail,
+  prepareJobFromLesson,
   statusTone,
   stepLabel,
 } from '@/lib/learnSession';
@@ -37,11 +40,21 @@ function SessionRow({
   const thumb = lessonThumbnail(lesson);
   const tone = statusTone(lesson);
   const unfinished = isUnfinishedLesson(lesson);
+  const preparing = isPreparingLesson(lesson);
+  const vocabReady = isVocabReady(lesson);
+  const job = preparing ? prepareJobFromLesson(lesson) : null;
   const score = lessonScoreLabel(lesson);
   const busy =
     resumeLoadingId === lesson.id ||
     deletingId === lesson.id ||
     renamingId === lesson.id;
+  const openLabel = preparing && !vocabReady
+    ? 'Preparing…'
+    : preparing && vocabReady
+    ? 'View vocab'
+    : unfinished
+    ? 'Continue'
+    : 'Open';
   const [editing, setEditing] = React.useState(false);
   const [titleDraft, setTitleDraft] = React.useState(lesson.title || '');
 
@@ -61,8 +74,9 @@ function SessionRow({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
+    <div className="flex flex-col gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
         {thumb ? (
           <img
             src={thumb}
@@ -116,7 +130,7 @@ function SessionRow({
           disabled={busy}
           className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white transition"
         >
-          {busy ? 'Opening…' : unfinished ? 'Continue' : 'Open'}
+          {busy ? 'Opening…' : openLabel}
         </button>
         {!unfinished && (
           <button
@@ -167,6 +181,8 @@ function SessionRow({
           )}
         </button>
       </div>
+      </div>
+      {job?.steps?.length ? <PrepareJobPanel job={job} compact /> : null}
     </div>
   );
 }
@@ -299,6 +315,11 @@ export default function StepUrl({
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 {stepLabel(unfinished)} · {formatRelativeTime(unfinished.updated_at || unfinished.created_at)}
               </p>
+              {isPreparingLesson(unfinished) ? (
+                <div className="mt-3">
+                  <PrepareJobPanel job={prepareJobFromLesson(unfinished)} compact />
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
               <button
@@ -312,7 +333,11 @@ export default function StepUrl({
                 ) : (
                   <Play className="w-4 h-4" />
                 )}
-                Continue
+                {isPreparingLesson(unfinished) && !isVocabReady(unfinished)
+                  ? 'Preparing…'
+                  : isVocabReady(unfinished) && isPreparingLesson(unfinished)
+                  ? 'View vocab'
+                  : 'Continue'}
               </button>
               <button
                 type="button"
