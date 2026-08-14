@@ -1016,17 +1016,21 @@ ${transcript}
           ? truncatedTranscript.slice(0, 8000) + '\n[... transcript continues ...]'
           : truncatedTranscript;
       console.warn('Retrying lesson highlights without chapters');
-      parsed = await this.requestLessonHighlights({
-        transcript: retryTranscript,
-        title,
-        durationSeconds,
-        needChapters: false,
-        timeout: 60000,
-      });
-      summary = normalizeLessonSummary(
-        extractLessonSummaryRaw(parsed),
-        retryTranscript
-      );
+      try {
+        parsed = await this.requestLessonHighlights({
+          transcript: retryTranscript,
+          title,
+          durationSeconds,
+          needChapters: false,
+          timeout: 60000,
+        });
+        summary = normalizeLessonSummary(
+          extractLessonSummaryRaw(parsed),
+          retryTranscript
+        );
+      } catch (retryErr) {
+        console.warn('Retry highlights pass failed:', retryErr.message);
+      }
     }
 
     if (!summary) {
