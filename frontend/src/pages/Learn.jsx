@@ -1257,6 +1257,7 @@ export default function Learn() {
             chapters={chapters}
             summary={summary}
             studyWords={studyWords}
+            vocabulary={vocabulary}
             onBack={() => {
               setStep(STEPS.VOCAB);
               persistProgress(lessonId, { currentStep: STEPS.VOCAB });

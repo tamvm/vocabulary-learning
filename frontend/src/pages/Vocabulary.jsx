@@ -127,7 +127,12 @@ const Vocabulary = () => {
         toast.success('Word analyzed successfully!')
       }
     } catch (error) {
-      toast.error('Failed to analyze word')
+      const msg =
+        error.response?.data?.message ||
+        (error.response?.status === 503
+          ? 'AI service is temporarily unavailable. Please try again shortly.'
+          : 'Failed to analyze word')
+      toast.error(msg)
       console.error('Analyze word error:', error)
     } finally {
       setAnalyzing(false)

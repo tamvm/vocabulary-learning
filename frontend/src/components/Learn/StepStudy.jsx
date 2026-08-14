@@ -11,13 +11,16 @@ import {
   Unlink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { aiAPI } from '@/lib/api';
+import { aiAPI, wordsAPI } from '@/lib/api';
 import VideoPlayer, { seekPlayer } from './VideoPlayer';
 import TranscriptPanel from './TranscriptPanel';
 import VocabPanel from './VocabPanel';
 import ChapterBar from './ChapterBar';
 import LessonSummary from './LessonSummary';
-import WordDetailModal, { normalizeWordDetail } from './WordDetailModal';
+import WordDetailModal, {
+  normalizeWordDetail,
+  isUnavailableAnalysis,
+} from './WordDetailModal';
 
 const FOLLOW_VIDEO_KEY = 'learn.transcriptFollowVideo';
 
@@ -77,6 +80,7 @@ export default function StepStudy({
   chapters = [],
   summary = '',
   studyWords = [],
+  vocabulary = [],
   onBack,
   onContinueQuiz,
   onAddStudyWord,
@@ -124,9 +128,13 @@ export default function StepStudy({
       setDetailOpen(true);
       setDetailError(null);
 
-      const fromStudy = knownItem || findStudyWord(studyWords, cleaned);
-      if (fromStudy?.definition) {
-        const normalized = normalizeWordDetail(fromStudy, cleaned);
+      const fromLocal =
+        knownItem ||
+        findStudyWord(studyWords, cleaned) ||
+        findStudyWord(vocabulary, cleaned);
+
+      if (fromLocal?.definition && !isUnavailableAnalysis(fromLocal)) {
+        const normalized = normalizeWordDetail(fromLocal, cleaned);
         setDetailWord(normalized);
         setDetailLoading(false);
         lookupCacheRef.current.set(cleaned.toLowerCase(), normalized);
@@ -134,7 +142,7 @@ export default function StepStudy({
       }
 
       const cached = lookupCacheRef.current.get(cleaned.toLowerCase());
-      if (cached) {
+      if (cached && !isUnavailableAnalysis(cached)) {
         setDetailWord(cached);
         setDetailLoading(false);
         return;
@@ -143,24 +151,53 @@ export default function StepStudy({
       setDetailWord({ word: cleaned });
       setDetailLoading(true);
       try {
+        // Prefer an existing saved vocabulary row before calling AI
+        try {
+          const existing = await wordsAPI.getAll({
+            search: cleaned,
+            limit: 5,
+            offset: 0,
+          });
+          const rows = Array.isArray(existing?.words) ? existing.words : [];
+          const match = rows.find(
+            (w) =>
+              String(w.word || '').toLowerCase() === cleaned.toLowerCase() &&
+              w.definition &&
+              !isUnavailableAnalysis(w)
+          );
+          if (match) {
+            const normalized = normalizeWordDetail(match, cleaned);
+            lookupCacheRef.current.set(cleaned.toLowerCase(), normalized);
+            setDetailWord(normalized);
+            return;
+          }
+        } catch (_) {
+          /* non-fatal — continue to AI */
+        }
+
         const response = await aiAPI.analyzeWord(cleaned, { autoSave: false });
         const analysis = response.data?.analysis;
-        if (!analysis) {
-          throw new Error(response.data?.message || 'No analysis returned');
+        if (!analysis || isUnavailableAnalysis(analysis)) {
+          throw new Error(
+            response.data?.message ||
+              'Could not look up this word. AI is unavailable — try again shortly.'
+          );
         }
         const normalized = normalizeWordDetail(analysis, cleaned);
         lookupCacheRef.current.set(cleaned.toLowerCase(), normalized);
         setDetailWord(normalized);
       } catch (err) {
         const msg =
-          err.response?.data?.message || err.message || 'Failed to look up word';
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to look up word';
         setDetailError(msg);
         toast.error(msg);
       } finally {
         setDetailLoading(false);
       }
     },
-    [studyWords]
+    [studyWords, vocabulary]
   );
 
   const handleCloseDetail = useCallback(() => {
