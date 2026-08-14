@@ -22,15 +22,30 @@ const KEYED_PROVIDERS = new Set([
   'opencode-go',
 ]);
 
+/** Coolify / other apps sometimes use opencode/go instead of opencode-go. */
+export function resolveAiProvider(name) {
+  const raw = String(name || '').trim();
+  if (raw === 'opencode/go' || raw === 'opencode_go') return 'opencode-go';
+  return raw;
+}
+
+export function lookupAiProviderConfig(providers, name) {
+  const raw = String(name || '').trim();
+  if (providers[raw]) return providers[raw];
+  const resolved = resolveAiProvider(raw);
+  return providers[resolved] || null;
+}
+
 export function providerNeedsApiKey(provider) {
-  return KEYED_PROVIDERS.has(provider);
+  return KEYED_PROVIDERS.has(resolveAiProvider(provider));
 }
 
 export function configurationError({ provider, apiKey, knownProviders }) {
-  if (!knownProviders.has(provider)) {
+  const resolved = resolveAiProvider(provider);
+  if (!knownProviders.has(resolved)) {
     return `Unknown AI provider "${provider}". Set AI_PROVIDER to openai, ollama-cloud, opencode, opencode-go, or ollama-local.`;
   }
-  if (providerNeedsApiKey(provider) && !String(apiKey || '').trim()) {
+  if (providerNeedsApiKey(resolved) && !String(apiKey || '').trim()) {
     return AI_NOT_CONFIGURED_MESSAGE;
   }
   return null;

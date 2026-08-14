@@ -8,8 +8,11 @@ import {
 import {
   configurationError,
   createPublicAiError,
+  lookupAiProviderConfig,
+  resolveAiProvider,
 } from './aiConfig.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
+import { withThinkingDisabled } from './chatMessageText.js';
 
 /**
  * Map Free Dictionary API entry → app word-analysis shape.
@@ -79,6 +82,10 @@ class AIService {
         baseUrl: 'https://opencode.ai/zen/go/v1',
         defaultModel: 'mimo-v2.5',
       },
+      'opencode/go': {
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        defaultModel: 'mimo-v2.5',
+      },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
         defaultModel: 'llama3.2:latest',
@@ -86,9 +93,11 @@ class AIService {
     };
 
     const providerName = String(
-      process.env.AI_PROVIDER || 'openai'
+      process.env.AI_PROVIDER
+        || (String(process.env.OPENCODE_API_KEY || '').trim() ? 'opencode' : 'openai')
     ).trim();
-    const providerDefaults = this.providers[providerName] || {};
+    const providerDefaults =
+      lookupAiProviderConfig(this.providers, providerName) || {};
     const configuredModel = String(
       process.env.AI_MODEL || providerDefaults.defaultModel || 'gpt-4o-mini'
     ).trim();
@@ -183,7 +192,7 @@ Ensure the response is valid JSON only, without any additional text or explanati
           },
         ],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 2000,
       }, { timeout: 60000 });
 
       if (response.choices && response.choices[0]) {
@@ -763,22 +772,23 @@ Provide only valid JSON without additional text.`;
   }
 
   async makeRequest(endpoint, data, options = {}) {
-    const provider = this.providers[this.config.provider];
+    const provider = lookupAiProviderConfig(this.providers, this.config.provider);
     if (!provider) {
       throw new Error(`Unknown AI provider: ${this.config.provider}`);
     }
 
+    const payload = withThinkingDisabled(data);
     const url = `${provider.baseUrl}/${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
     };
 
-    // Add authentication based on provider
+    const resolved = resolveAiProvider(this.config.provider);
     if (
-      this.config.provider === 'ollama-cloud' ||
-      this.config.provider === 'openai' ||
-      this.config.provider === 'opencode' ||
-      this.config.provider === 'opencode-go'
+      resolved === 'ollama-cloud' ||
+      resolved === 'openai' ||
+      resolved === 'opencode' ||
+      resolved === 'opencode-go'
     ) {
       if (!this.config.apiKey) {
         throw createPublicAiError(new Error('API key is required for this provider'));
@@ -792,7 +802,7 @@ Provide only valid JSON without additional text.`;
     const response = await this.httpRequest(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
       timeout,
     });
 
@@ -806,7 +816,7 @@ Provide only valid JSON without additional text.`;
 
   async testConnection() {
     try {
-      const provider = this.providers[this.config.provider];
+      const provider = lookupAiProviderConfig(this.providers, this.config.provider);
       if (!provider) {
         return {
           success: false,
@@ -817,7 +827,7 @@ Provide only valid JSON without additional text.`;
       let testEndpoint;
       const headers = {};
 
-      if (this.config.provider === 'ollama-local') {
+      if (resolveAiProvider(this.config.provider) === 'ollama-local') {
         testEndpoint = `${provider.baseUrl}/api/tags`;
       } else {
         testEndpoint = `${provider.baseUrl}/models`;

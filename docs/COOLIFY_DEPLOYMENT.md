@@ -60,6 +60,7 @@ AI_PROVIDER=opencode
 AI_API_KEY=...                 # OpenCode Go key (OPENCODE_API_KEY also accepted)
 AI_MODEL=mimo-v2.5
 # AI_PROVIDER=opencode-go is accepted as an alias for the same endpoint
+# AI_PROVIDER=opencode/go is also accepted (same as opencode-go)
 
 JWT_SECRET=...   # strong random value
 
@@ -71,6 +72,18 @@ RATE_LIMIT_MAX=1000
 ```
 
 4. Deploy once manually; confirm `/` or a health/API route responds on the public URL.
+
+5. Confirm AI env on the **running** backend (not only that the vars exist in the Coolify UI):
+
+```bash
+# Live API. Copy the browser session JWT (starts with eyJ), not AI_API_KEY.
+VOCA_ACCESS_TOKEN='…' npm run test:ai -- --remote --expect-provider opencode --expect-model mimo-v2.5
+
+# Same keys locally or `docker exec` in the backend container:
+AI_PROVIDER=opencode AI_API_KEY='…' AI_MODEL=mimo-v2.5 npm run test:ai -- --direct --expect-model mimo-v2.5
+```
+
+`analyze-word` can succeed via Free Dictionary when the LLM is down; the remote probe **fails** if that fallback is used. Direct mode sends a tiny `chat/completions` ping.
 
 ---
 
