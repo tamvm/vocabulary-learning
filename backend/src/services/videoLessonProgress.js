@@ -1,5 +1,5 @@
 import { looksLikeTranscriptDump } from './lessonSummaryNormalize.js';
-import { resolvePrepareStatus, resolveSummaryStatus } from './lessonPrepareJob.js';
+import { resolvePrepareStatus, resolveSummaryStatus, buildPrepareJobView } from './lessonPrepareJob.js';
 
 export const LEARN_STEPS = {
   URL: 1,
@@ -122,6 +122,7 @@ export function hydrateLessonResponse(lesson) {
     prepareStep: lesson.prepare_step || null,
     prepareError: lesson.prepare_error || '',
     vocabReady: lesson.vocabulary_snapshot != null,
+    prepareJob: buildPrepareJobView(lesson),
     userCefrLevel: lesson.user_cefr_level || 'B2',
     currentStep,
   };

@@ -30,6 +30,59 @@ export const SUMMARY_STATUS = {
 };
 
 export const PREPARE_STALE_MS = 8 * 60 * 1000;
+
+export const PREPARE_STEP_ORDER = [
+  PREPARE_STEPS.transcript,
+  PREPARE_STEPS.vocab,
+  PREPARE_STEPS.highlights,
+  PREPARE_STEPS.quiz,
+];
+
+const PREPARE_STEP_LABELS = {
+  transcript: 'Transcript',
+  vocab: 'Vocabulary',
+  highlights: 'Highlights',
+  quiz: 'Quiz',
+};
+
+export function buildPrepareJobView(lesson, nowMs = Date.now()) {
+  const status = resolvePrepareStatus(lesson, nowMs);
+  const current = lesson?.prepare_step || null;
+  const hasTranscript = String(lesson?.transcript_text || '').trim().length >= 80;
+  const hasVocab = lesson?.vocabulary_snapshot != null;
+  const hasHighlights = Boolean(
+    usableSummary(lesson?.summary, lesson?.transcript_text || '')
+  );
+  const hasQuiz =
+    Array.isArray(lesson?.quiz_questions) && lesson.quiz_questions.length > 0;
+  const doneFlags = {
+    transcript: hasTranscript,
+    vocab: hasVocab,
+    highlights: hasHighlights,
+    quiz: hasQuiz,
+  };
+  const currentIndex = PREPARE_STEP_ORDER.indexOf(current);
+
+  const steps = PREPARE_STEP_ORDER.map((id, index) => {
+    let state = 'queued';
+    if (doneFlags[id]) state = 'done';
+    else if (status === PREPARE_STATUS.failed && id === current) state = 'failed';
+    else if (status === PREPARE_STATUS.pending && id === current) state = 'running';
+    else if (status === PREPARE_STATUS.pending && currentIndex >= 0 && index < currentIndex) {
+      state = 'done';
+    } else if (status === PREPARE_STATUS.ready && id !== PREPARE_STEPS.quiz) {
+      state = 'done';
+    }
+    return { id, label: PREPARE_STEP_LABELS[id], state };
+  });
+
+  return {
+    status,
+    step: current === PREPARE_STEPS.done ? PREPARE_STEPS.done : current,
+    error: lesson?.prepare_error || '',
+    steps,
+  };
+}
 export const VOCAB_SAMPLE_CHARS = 5000;
 export const SUMMARY_SAMPLE_CHARS = 12000;
 export const HIGHLIGHTS_JOB_FIRST_MS = 90000;
@@ -154,6 +207,7 @@ export async function runLessonPreparePipeline({
 } = {}) {
   const lessonId = lesson.id;
   let row = { ...lesson };
+  console.log(`[learn-job] ${lessonId} start`);
 
   const fail = async (step, message) => {
     await patchLessonPrepare(supabase, userId, lessonId, {
@@ -169,6 +223,7 @@ export async function runLessonPreparePipeline({
     prepare_step: PREPARE_STEPS.transcript,
     prepare_error: null,
   });
+  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.transcript}`);
 
   if (!row.transcript_text || String(row.transcript_text).trim().length < 80) {
     const transcriptResult = await fetchTranscript(row.video_url);
@@ -201,6 +256,7 @@ export async function runLessonPreparePipeline({
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.vocab,
   });
+  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.vocab}`);
 
   if (!Array.isArray(row.vocabulary_snapshot)) {
     const cefr = row.user_cefr_level || 'B2';
@@ -245,6 +301,7 @@ export async function runLessonPreparePipeline({
     summary_status: SUMMARY_STATUS.pending,
     summary_error: null,
   });
+  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.highlights}`);
 
   const existingSummary = usableSummary(row.summary, row.transcript_text);
   if (!existingSummary) {
@@ -298,6 +355,7 @@ export async function runLessonPreparePipeline({
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.quiz,
   });
+  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.quiz}`);
 
   if (!Array.isArray(row.quiz_questions) || !row.quiz_questions.length) {
     try {
@@ -333,6 +391,7 @@ export async function runLessonPreparePipeline({
     prepare_step: PREPARE_STEPS.done,
     prepare_error: null,
   });
+  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.done}`);
   return { ok: true, step: PREPARE_STEPS.done };
 }
 
@@ -340,6 +399,7 @@ export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
   const lessonId = lesson?.id;
   if (!lessonId || inFlight.has(lessonId)) return false;
   inFlight.add(lessonId);
+  console.log(`[learn-job] ${lessonId} queued`);
   const job =
     run || (() => runLessonPreparePipeline({ supabase, userId, lesson }));
   setImmediate(() => {

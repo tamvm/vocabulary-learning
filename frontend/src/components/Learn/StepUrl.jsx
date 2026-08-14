@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatRelativeTime } from '@/lib/utils';
+import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import {
   isUnfinishedLesson,
   latestUnfinished,
@@ -125,6 +126,7 @@ export default function StepUrl({
   onDelete,
   onClearAll,
   deletingId,
+  prepareJob = null,
 }) {
   const [url, setUrl] = React.useState('');
   const unfinished = latestUnfinished(history);
@@ -258,11 +260,8 @@ export default function StepUrl({
       </form>
 
       {loading && (
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {loadingLabel} This stays on the server so the connection will not time out.
-          </div>
+        <div className="mt-8">
+          <PrepareJobPanel job={prepareJob} />
         </div>
       )}
 

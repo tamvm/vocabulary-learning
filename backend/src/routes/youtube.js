@@ -14,6 +14,7 @@ import {
   patchLessonPrepare,
   resolvePrepareStatus,
   resolveSummaryStatus,
+  buildPrepareJobView,
   PREPARE_STATUS,
   PREPARE_STEPS,
   SUMMARY_STATUS,
@@ -220,7 +221,6 @@ router.post('/analyze', async (req, res, next) => {
     return res.status(202).json({
       success: true,
       status: PREPARE_STATUS.pending,
-      prepareStep: PREPARE_STEPS.transcript,
       lessonId,
       videoInfo: {
         videoId,
@@ -234,6 +234,13 @@ router.post('/analyze', async (req, res, next) => {
       summary: '',
       chapters: [],
       userCefrLevel,
+      vocabReady: false,
+      prepareStatus: PREPARE_STATUS.pending,
+      prepareStep: PREPARE_STEPS.transcript,
+      prepareJob: buildPrepareJobView({
+        prepare_status: PREPARE_STATUS.pending,
+        prepare_step: PREPARE_STEPS.transcript,
+      }),
     });
   } catch (error) {
     console.error('YouTube analyze error:', error);

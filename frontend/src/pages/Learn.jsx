@@ -29,6 +29,7 @@ import { apiErrorMessage } from '@/lib/aiErrors';
 import GroupSelector from '@/components/GroupSelector';
 import StepStudy from '@/components/Learn/StepStudy';
 import StepUrl from '@/components/Learn/StepUrl';
+import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import LessonSummary from '@/components/Learn/LessonSummary';
 import WordDetailModal, {
   normalizeWordDetail,
@@ -682,6 +683,7 @@ export default function Learn() {
   const [step, setStep] = useState(STEPS.URL);
   const [loading, setLoading] = useState(false);
   const [prepareStep, setPrepareStep] = useState(null);
+  const [prepareJob, setPrepareJob] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -736,6 +738,7 @@ export default function Learn() {
         if (highlightsPollGenRef.current !== pollGen) return;
         const poll = await youtubeAPI.getLesson(lessonId);
         if (highlightsPollGenRef.current !== pollGen) return;
+        setPrepareJob(poll.data?.prepareJob || null);
         const polledSummary = poll.data?.summary || '';
         if (polledSummary) {
           setSummary(polledSummary);
@@ -776,6 +779,34 @@ export default function Learn() {
     highlightsAttemptedRef.current.add(lessonId);
     generateHighlights({ auto: true });
   }, [lessonId, step, summary, generateHighlights]);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    if (prepareJob?.status !== 'pending') return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const poll = await youtubeAPI.getLesson(lessonId);
+        if (cancelled) return;
+        if (poll.data?.prepareJob) setPrepareJob(poll.data.prepareJob);
+        if (poll.data?.summary) setSummary(poll.data.summary);
+        if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
+          setChapters(poll.data.chapters);
+        }
+        if (Array.isArray(poll.data?.questions) && poll.data.questions.length) {
+          setQuestions(poll.data.questions);
+        }
+      } catch (err) {
+        console.warn('Prepare job poll failed:', err);
+      }
+    };
+    const timer = setInterval(tick, 2000);
+    tick();
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [lessonId, prepareJob?.status]);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -853,6 +884,7 @@ export default function Learn() {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           const poll = await youtubeAPI.getLesson(id);
           setPrepareStep(poll.data?.prepareStep || 'quiz');
+          setPrepareJob(poll.data?.prepareJob || null);
           nextQuestions = poll.data?.questions || [];
           if (nextQuestions.length) break;
           if (poll.data?.prepareStatus === 'failed') {
@@ -922,6 +954,7 @@ export default function Learn() {
         setSearchParams({ lesson: nextLessonId }, { replace: true });
       }
 
+      setPrepareJob(kicked.prepareJob || null);
       let data = kicked;
       if (!kicked.vocabReady && nextLessonId) {
         const deadline = Date.now() + 300000;
@@ -930,6 +963,7 @@ export default function Learn() {
           const poll = await youtubeAPI.getLesson(nextLessonId);
           data = poll.data;
           setPrepareStep(data.prepareStep || 'vocab');
+          setPrepareJob(data.prepareJob || null);
           if (data.vocabReady) break;
           if (data.prepareStatus === 'failed') {
             throw new Error(data.prepareError || 'Could not prepare this video');
@@ -950,6 +984,7 @@ export default function Learn() {
       setQuestions(Array.isArray(data.questions) ? data.questions : []);
       setQuizAnswers({});
       setStep(STEPS.VOCAB);
+      setPrepareJob(data.prepareJob || null);
       loadHistory();
 
       const totalFound = (data.vocabulary || []).length;
@@ -1293,6 +1328,12 @@ export default function Learn() {
           </div>
         ) : null}
 
+        {step !== STEPS.URL && prepareJob?.status === 'pending' ? (
+          <div className="max-w-6xl mx-auto mb-4">
+            <PrepareJobPanel job={prepareJob} />
+          </div>
+        ) : null}
+
         {/* Step content */}
         {step === STEPS.URL && (
           <StepUrl
@@ -1309,6 +1350,7 @@ export default function Learn() {
             onDelete={handleDeleteLesson}
             onClearAll={handleClearHistory}
             deletingId={deletingId}
+            prepareJob={prepareJob}
           />
         )}
 

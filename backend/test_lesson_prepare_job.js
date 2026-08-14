@@ -12,6 +12,7 @@ import {
   PREPARE_STATUS,
   PREPARE_STEPS,
   runLessonPreparePipeline,
+  buildPrepareJobView,
 } from './src/services/lessonPrepareJob.js';
 
 function assert(cond, msg) {
@@ -42,6 +43,17 @@ assert(
   }) === 'ready',
   'summary ready from text'
 );
+
+const runningJob = buildPrepareJobView({
+  prepare_status: 'pending',
+  prepare_step: 'vocab',
+  transcript_text: 'A'.repeat(80),
+  updated_at: new Date().toISOString(),
+});
+assert(runningJob.steps[0].state === 'done', 'transcript done when text exists');
+assert(runningJob.steps[1].state === 'running', 'vocab running');
+assert(runningJob.steps[2].state === 'queued', 'highlights queued');
+assert(runningJob.steps[3].id === 'quiz', 'quiz listed');
 
 const steps = [];
 const patches = [];
