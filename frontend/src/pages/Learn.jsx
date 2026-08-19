@@ -23,6 +23,9 @@ import {
   lessonNeedsReanalyze,
   reuseSavedLessonId,
   prepareStepLabel,
+  upsertHistoryLesson,
+  isPreparingLesson,
+  isVocabReady,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
 import { apiErrorMessage } from '@/lib/aiErrors';
@@ -134,7 +137,7 @@ function StepVocab({
           title="All videos"
         >
           <ChevronLeft className="w-5 h-5" />
-          <span className="hidden sm:inline">All videos</span>
+          <span>All videos</span>
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="font-semibold text-gray-900 dark:text-white truncate">
@@ -745,6 +748,8 @@ export default function Learn() {
 
   const highlightsLoadingRef = useRef(false);
   const highlightsPollGenRef = useRef(0);
+  const vocabReadyToastRef = useRef(new Set());
+  const historyPrimedRef = useRef(false);
   const generateHighlights = useCallback(async ({ auto = false } = {}) => {
     if (!lessonId || highlightsLoadingRef.current) return;
     highlightsLoadingRef.current = true;
@@ -850,15 +855,26 @@ export default function Learn() {
     }
   }, []);
 
-  const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
+  const loadHistory = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setHistoryLoading(true);
     try {
       const response = await youtubeAPI.getHistory();
-      setHistory(response.data?.lessons || []);
+      const next = response.data?.lessons || [];
+      const primed = historyPrimedRef.current;
+      setHistory(next);
+      next.forEach((lesson) => {
+        if (!isVocabReady(lesson)) return;
+        if (vocabReadyToastRef.current.has(lesson.id)) return;
+        vocabReadyToastRef.current.add(lesson.id);
+        if (primed && isPreparingLesson(lesson)) {
+          toast.success('Vocabulary ready — open the video to review it now');
+        }
+      });
+      historyPrimedRef.current = true;
     } catch (err) {
       console.warn('Failed to load lesson history:', err);
     } finally {
-      setHistoryLoading(false);
+      if (!silent) setHistoryLoading(false);
     }
   }, []);
 
@@ -981,6 +997,8 @@ export default function Learn() {
     setQuestions(data.questions || []);
     setQuizAnswers(mode === 'retake' ? {} : data.quizAnswers || {});
     setQuizResetKey((key) => key + 1);
+    setPrepareJob(data.prepareJob || null);
+    setPrepareStep(data.prepareStep || null);
     setStep(nextStep);
     setError(null);
 
@@ -1004,54 +1022,26 @@ export default function Learn() {
       setLessonId(nextLessonId);
       setVideoInfo(kicked.videoInfo);
       setUserCefrLevel(kicked.userCefrLevel);
-      if (nextLessonId) {
-        setSearchParams({ lesson: nextLessonId }, { replace: true });
-      }
-
       setPrepareJob(kicked.prepareJob || null);
-      let data = kicked;
-      if (!kicked.vocabReady && nextLessonId) {
-        const deadline = Date.now() + 300000;
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const poll = await youtubeAPI.getLesson(nextLessonId);
-          data = poll.data;
-          setPrepareStep(data.prepareStep || 'vocab');
-          setPrepareJob(data.prepareJob || null);
-          if (data.vocabReady) break;
-          if (data.prepareStatus === 'failed') {
-            throw new Error(data.prepareError || 'Could not prepare this video');
-          }
-        }
-        if (!data.vocabReady) {
-          throw new Error('This video is still preparing. Open the session again in a moment.');
-        }
-      }
-
-      setVideoInfo(data.videoInfo || kicked.videoInfo);
-      setVocabulary(data.vocabulary || []);
-      setUserCefrLevel(data.userCefrLevel || kicked.userCefrLevel);
-      setCues(Array.isArray(data.cues) ? data.cues : []);
-      setSummary(data.summary || '');
-      setChapters(Array.isArray(data.chapters) ? data.chapters : []);
-      setStudyWords([]);
-      setQuestions(Array.isArray(data.questions) ? data.questions : []);
-      setQuizAnswers({});
-      setStep(STEPS.VOCAB);
-      setPrepareJob(data.prepareJob || null);
-      loadHistory();
-
-      const totalFound = (data.vocabulary || []).length;
-      if (data.prepareError && data.prepareStatus !== 'failed') {
-        toast.error(data.prepareError);
-      } else if (totalFound === 0) {
-        toast(
-          'No word list yet — continue to Study and tap words in the transcript to add them.',
-          { icon: 'ℹ️' }
-        );
-      } else {
-        toast.success(`Found ${totalFound} vocabulary items`);
-      }
+      setPrepareStep(kicked.prepareStep || 'transcript');
+      setHistory((prev) =>
+        upsertHistoryLesson(prev, {
+          id: nextLessonId,
+          video_url: videoUrl,
+          video_id: kicked.videoInfo?.videoId,
+          title: kicked.videoInfo?.title,
+          thumbnail_url: kicked.videoInfo?.thumbnail,
+          status: 'analyzed',
+          current_step: STEPS.VOCAB,
+          prepare_status: 'pending',
+          prepare_step: kicked.prepareStep || 'transcript',
+          updated_at: new Date().toISOString(),
+        })
+      );
+      setStep(STEPS.URL);
+      setSearchParams({}, { replace: true });
+      toast('Video added — fetching transcript and vocabulary in the background', { icon: 'ℹ️' });
+      loadHistory({ silent: true });
     } catch (err) {
       const msg = apiErrorMessage(err, 'Failed to analyze video');
       setError(msg);
@@ -1071,13 +1061,44 @@ export default function Learn() {
       const data = response.data;
       const hasQuiz = Array.isArray(data.questions) && data.questions.length > 0;
 
+      if (data.prepareStatus === 'pending' && !data.vocabReady) {
+        setLessonId(id);
+        setCurrentVideoUrl(data.lesson?.videoUrl || '');
+        setVideoInfo(data.videoInfo);
+        setPrepareJob(data.prepareJob || null);
+        setPrepareStep(data.prepareStep || 'transcript');
+        setSearchParams({}, { replace: true });
+        setStep(STEPS.URL);
+        setHistory((prev) =>
+          upsertHistoryLesson(prev, {
+            id,
+            video_url: data.lesson?.videoUrl,
+            video_id: data.lesson?.videoId,
+            title: data.videoInfo?.title || data.lesson?.title,
+            thumbnail_url: data.videoInfo?.thumbnail,
+            status: data.lesson?.status || 'analyzed',
+            current_step: data.currentStep,
+            prepare_status: 'pending',
+            prepare_step: data.prepareStep,
+            prepare_progress: data.prepareProgress,
+            updated_at: data.lesson?.updatedAt || new Date().toISOString(),
+          })
+        );
+        toast('Still preparing — you can open it as soon as vocabulary is ready', { icon: 'ℹ️' });
+        loadHistory({ silent: true });
+        return;
+      }
+
       if (lessonNeedsReanalyze(data)) {
         toast('This session has no saved vocabulary. Re-extracting the video…', { icon: 'ℹ️' });
         await analyzeVideo(data.lesson.videoUrl, id);
         return;
       }
 
-      const nextStep = applyHydratedLesson(data, mode);
+      const nextStep = applyHydratedLesson(
+        data,
+        data.prepareStatus === 'pending' && data.vocabReady ? 'resume' : mode
+      );
 
       if (mode === 'retake') {
         await persistProgress(id, {
@@ -1105,12 +1126,18 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setResumeLoadingId(null);
+      setLoading(false);
     }
-  }, [analyzeVideo, applyHydratedLesson, generateQuiz, persistProgress]);
+  }, [analyzeVideo, applyHydratedLesson, generateQuiz, loadHistory, persistProgress, setSearchParams]);
 
   const handleAnalyze = useCallback(async (videoUrl) => {
     const reuseId = reuseSavedLessonId(history, extractYoutubeId(videoUrl));
     if (reuseId) {
+      const existing = (history || []).find((lesson) => lesson.id === reuseId);
+      if (isPreparingLesson(existing) && !isVocabReady(existing)) {
+        await resumeLesson(reuseId, 'resume');
+        return;
+      }
       toast('Opening your saved video…', { icon: 'ℹ️' });
       await resumeLesson(reuseId, 'resume');
       return;
@@ -1133,6 +1160,16 @@ export default function Learn() {
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  const hasPendingPrepare = (history || []).some(isPreparingLesson);
+
+  useEffect(() => {
+    if (!hasPendingPrepare || step !== STEPS.URL) return;
+    const timer = setInterval(() => {
+      loadHistory({ silent: true });
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [hasPendingPrepare, step, loadHistory]);
 
   useEffect(() => {
     const deepLinkId = searchParams.get('lesson');
@@ -1324,9 +1361,13 @@ export default function Learn() {
 
   // ── Reset ────────────────────────────────────────────
   const handleRetry = () => {
-    if (lessonId) {
+    highlightsPollGenRef.current += 1;
+    if (lessonId && step !== STEPS.URL) {
       persistProgress(lessonId, { currentStep: step });
     }
+    setLoading(false);
+    setPrepareJob(null);
+    setPrepareStep(null);
     setStep(STEPS.URL);
     setVideoInfo(null);
     setVocabulary([]);
@@ -1340,7 +1381,7 @@ export default function Learn() {
     setChapters([]);
     setStudyWords([]);
     setSearchParams({}, { replace: true });
-    loadHistory();
+    loadHistory({ silent: true });
   };
 
   const goToStep = (target) => {
@@ -1389,9 +1430,21 @@ export default function Learn() {
         <title>Learn from YouTube — Magic English</title>
       </Helmet>
 
-      <div className="py-6 px-4 sm:px-6 lg:px-8">
+      <div className="pb-2">
+        {(step !== STEPS.URL || searchParams.get('lesson')) && (
+          <div className="max-w-3xl mx-auto mb-4">
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              All videos
+            </button>
+          </div>
+        )}
         {/* Step indicator */}
-        <div className="max-w-3xl mx-auto mb-8">
+        <div className="max-w-3xl mx-auto mb-6 sm:mb-8">
           <div className="flex items-center justify-center gap-2">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>

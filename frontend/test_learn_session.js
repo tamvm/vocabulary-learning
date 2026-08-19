@@ -15,6 +15,11 @@ import {
   reuseUnfinishedLessonId,
   statusTone,
   stepLabel,
+  isPreparingLesson,
+  isVocabReady,
+  upsertHistoryLesson,
+  prepareJobFromLesson,
+  prepareStepLabel,
 } from './src/lib/learnSession.js';
 
 let failed = 0;
@@ -150,6 +155,51 @@ assertEqual(
   }),
   false,
   'does not reanalyze while prepare pipeline is pending'
+);
+
+const preparing = {
+  id: 'p',
+  status: 'analyzed',
+  prepare_status: 'pending',
+  prepare_step: 'vocab',
+  prepare_progress: '2/3',
+  title: 'Long interview',
+  video_id: 'xyzxyzxyzxy',
+};
+assertEqual(isPreparingLesson(preparing), true, 'pending prepare_status is preparing');
+assertEqual(isVocabReady(preparing), false, 'vocab step is not vocab-ready yet');
+assertEqual(statusTone(preparing).label, 'Preparing', 'pending lesson tone is Preparing');
+assertEqual(
+  stepLabel(preparing),
+  'Finding vocabulary (2/3)…',
+  'pending lesson shows vocab chunk progress'
+);
+assertEqual(
+  prepareJobFromLesson(preparing).steps[1].progress,
+  '2/3',
+  'list job view carries vocab progress'
+);
+
+const vocabReadyPending = {
+  ...preparing,
+  id: 'q',
+  prepare_step: 'highlights',
+  prepare_progress: '',
+};
+assertEqual(isVocabReady(vocabReadyPending), true, 'highlights step means vocab is ready');
+assertEqual(statusTone(vocabReadyPending).label, 'Vocab ready', 'can open vocab while job continues');
+
+const listed = upsertHistoryLesson([unfinished], preparing);
+assertEqual(listed[0].id, 'p', 'pending lesson is prepended to Your videos');
+assertEqual(
+  upsertHistoryLesson(listed, { id: 'p', prepare_step: 'highlights' })[0].prepare_step,
+  'highlights',
+  'upsert updates the existing pending row'
+);
+assertEqual(
+  prepareStepLabel('vocab', '1/3'),
+  'Finding vocabulary (1/3)…',
+  'prepareStepLabel includes chunk progress'
 );
 
 if (failed) {

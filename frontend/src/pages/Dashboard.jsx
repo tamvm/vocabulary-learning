@@ -104,28 +104,28 @@ const Dashboard = () => {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             Dashboard
           </h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
+          <p className="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400">
             Welcome back! Here's your learning progress overview.
           </p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {statCards.map((stat) => (
             <div key={stat.title} className="card">
               <div className="card-body">
-                <div className="flex items-center">
-                  <div className={`p-2 rounded-lg ${stat.color}`}>
+                <div className="flex items-center min-w-0">
+                  <div className={`p-2 rounded-lg flex-shrink-0 ${stat.color}`}>
                     <stat.icon className="h-6 w-6" />
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-4 min-w-0">
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                       {stat.title}
                     </p>
-                    <p className="text-2xl font-semibold text-gray-900 dark:text-white">
+                    <p className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate">
                       {stat.value}
                     </p>
                   </div>
@@ -244,13 +244,13 @@ const Dashboard = () => {
             </h3>
           </div>
           <div className="card-body">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <a
                 href="/vocabulary"
-                className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                className="flex items-center p-3 sm:p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors min-w-0"
               >
-                <BookOpen className="h-8 w-8 text-blue-600 dark:text-blue-400 mr-4" />
-                <div>
+                <BookOpen className="h-7 w-7 sm:h-8 sm:w-8 text-blue-600 dark:text-blue-400 mr-3 sm:mr-4 flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="font-medium text-blue-900 dark:text-blue-100">
                     Add New Words
                   </p>
@@ -262,10 +262,10 @@ const Dashboard = () => {
 
               <a
                 href="/scoring"
-                className="flex items-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                className="flex items-center p-3 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors min-w-0"
               >
-                <PenTool className="h-8 w-8 text-green-600 dark:text-green-400 mr-4" />
-                <div>
+                <PenTool className="h-7 w-7 sm:h-8 sm:w-8 text-green-600 dark:text-green-400 mr-3 sm:mr-4 flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="font-medium text-green-900 dark:text-green-100">
                     Score Sentences
                   </p>
@@ -277,10 +277,10 @@ const Dashboard = () => {
 
               <a
                 href="/study"
-                className="flex items-center p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
+                className="flex items-center p-3 sm:p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors min-w-0"
               >
-                <BrainCircuit className="h-8 w-8 text-indigo-600 dark:text-indigo-400 mr-4" />
-                <div>
+                <BrainCircuit className="h-7 w-7 sm:h-8 sm:w-8 text-indigo-600 dark:text-indigo-400 mr-3 sm:mr-4 flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="font-medium text-indigo-900 dark:text-indigo-100">
                     Study Flashcards
                   </p>
@@ -292,10 +292,10 @@ const Dashboard = () => {
 
               <a
                 href="/profile"
-                className="flex items-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                className="flex items-center p-3 sm:p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors min-w-0"
               >
-                <TrendingUp className="h-8 w-8 text-purple-600 dark:text-purple-400 mr-4" />
-                <div>
+                <TrendingUp className="h-7 w-7 sm:h-8 sm:w-8 text-purple-600 dark:text-purple-400 mr-3 sm:mr-4 flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="font-medium text-purple-900 dark:text-purple-100">
                     View Progress
                   </p>

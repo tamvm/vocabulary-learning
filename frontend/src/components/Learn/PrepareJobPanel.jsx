@@ -1,18 +1,22 @@
 import React from 'react';
 import { Check, Loader2, Circle, X } from 'lucide-react';
 
-export default function PrepareJobPanel({ job, className = '' }) {
+export default function PrepareJobPanel({ job, className = '', compact = false }) {
   const steps = Array.isArray(job?.steps) ? job.steps : [];
   if (!steps.length) return null;
 
   return (
     <div
-      className={`rounded-xl border border-primary-200 dark:border-primary-800 bg-white dark:bg-gray-800 p-4 ${className}`}
+      className={`rounded-xl border border-primary-200 dark:border-primary-800 bg-white dark:bg-gray-800 ${
+        compact ? 'p-3' : 'p-4'
+      } ${className}`}
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">
-        Background job
-      </p>
-      <ol className="mt-3 space-y-2">
+      {!compact ? (
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">
+          Background job
+        </p>
+      ) : null}
+      <ol className={compact ? 'space-y-1.5' : 'mt-3 space-y-2'}>
         {steps.map((step) => (
           <li key={step.id} className="flex items-center gap-2 text-sm">
             <StepIcon state={step.state} />
@@ -24,6 +28,7 @@ export default function PrepareJobPanel({ job, className = '' }) {
               }
             >
               {step.label}
+              {step.progress && step.state === 'running' ? ` ${step.progress}` : ''}
             </span>
             <span className="ml-auto text-[11px] uppercase tracking-wide text-gray-400">
               {step.state}

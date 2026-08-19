@@ -411,6 +411,90 @@ Return only a JSON array of objects (no markdown), each with:
     return deduplicated;
   }
 
+  normalizeVocabItem(item) {
+    const word = String(item.word || item.term || '').trim();
+    return {
+      word,
+      definition: String(item.definition || item.meaning || '').trim()
+        || (word ? `Used in this video: "${word}"` : ''),
+      wordType: item.wordType || item.type || 'unknown',
+      cefrLevel: item.cefrLevel || item.level || 'B2',
+      ipaPronunciation: item.ipaPronunciation || item.ipa || '',
+      exampleSentence: item.exampleSentence || item.example || '',
+      vietnameseTranslation: item.vietnameseTranslation || item.translation || '',
+      synonyms: item.synonyms || '',
+      notes: item.notes || '',
+      tags: Array.isArray(item.tags) ? item.tags : [],
+    };
+  }
+
+  /**
+   * Fill definitions for locally ranked transcript candidates (one request).
+   */
+  async defineVocabularyItems(candidates, userCefrLevel = 'B2', options = {}) {
+    const list = Array.isArray(candidates) ? candidates.filter((c) => c?.word) : [];
+    if (!list.length) return { vocabulary: [] };
+
+    const { candidatesToStubVocabulary } = await import('./vocabCandidates.js');
+    const stubs = candidatesToStubVocabulary(list);
+
+    const lines = list
+      .map((item, idx) => {
+        const ctx = item.context ? ` | context: ${item.context}` : '';
+        return `${idx + 1}. ${item.word}${ctx}`;
+      })
+      .join('\n');
+
+    const prompt = `You are an experienced English teacher.
+Learner CEFR level: ${userCefrLevel}.
+
+Define these vocabulary items taken from a video transcript. Keep the same words/phrases (do not replace them with easier synonyms as the headword).
+Return one JSON object per item. Never return an empty array.
+
+Items:
+${lines}
+
+Return only a JSON array of objects (no markdown), each with:
+{
+  "word": "same vocabulary item as above",
+  "definition": "clear English definition",
+  "wordType": "noun/verb/adjective/phrase/idiom/etc",
+  "cefrLevel": "estimated CEFR level (A1-C2)",
+  "ipaPronunciation": "British IPA pronunciation",
+  "exampleSentence": "natural example sentence for memorization",
+  "vietnameseTranslation": "natural Vietnamese translation",
+  "synonyms": "comma-separated list of synonyms",
+  "notes": "usage notes or cultural context if relevant",
+  "tags": ["tag1", "tag2"]
+}`;
+
+    try {
+      const response = await this.makeRequest('chat/completions', {
+        model: this.config.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 8000,
+      }, {
+        timeout: options.timeout || 120000,
+      });
+
+      const content = response.choices?.[0]?.message?.content;
+      const parsed = parseAiJsonArray(content).map((item) => this.normalizeVocabItem(item));
+      const byWord = new Map(parsed.filter((item) => item.word).map((item) => [
+        item.word.toLowerCase(),
+        item,
+      ]));
+      const merged = stubs.map((stub) => {
+        const hit = byWord.get(String(stub.word).toLowerCase());
+        return hit ? { ...stub, ...hit, word: stub.word } : stub;
+      });
+      return { vocabulary: merged };
+    } catch (error) {
+      console.warn('defineVocabularyItems failed, using transcript stubs:', error?.message);
+      return { vocabulary: stubs };
+    }
+  }
+
   async analyzeWebsiteContent(content, userCefrLevel = 'B2', options = {}) {
     const {
       limit = 20,

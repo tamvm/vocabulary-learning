@@ -73,7 +73,11 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
     } else if (status === PREPARE_STATUS.ready && id !== PREPARE_STEPS.quiz) {
       state = 'done';
     }
-    return { id, label: PREPARE_STEP_LABELS[id], state };
+    const progress =
+      id === PREPARE_STEPS.vocab && lesson?.prepare_progress
+        ? String(lesson.prepare_progress)
+        : '';
+    return { id, label: PREPARE_STEP_LABELS[id], state, progress };
   });
 
   return {
@@ -139,6 +143,7 @@ const OPTIONAL_COLUMNS = [
   'prepare_status',
   'prepare_step',
   'prepare_error',
+  'prepare_progress',
   'summary_status',
   'summary_error',
 ];
@@ -174,11 +179,31 @@ async function defaultFetchTranscript(videoUrl) {
 
 async function defaultAnalyzeVocab(text, cefr, options = {}) {
   const { aiService } = await import('./aiService.js');
+  const { extractVocabCandidates } = await import('./vocabCandidates.js');
+  const source = options.transcript || text;
+  const candidates = extractVocabCandidates(source, {
+    cues: options.cues,
+    cefr,
+    excludeWords: options.excludeWords,
+    limit: 36,
+  });
+  if (typeof options.onProgress === 'function') {
+    options.onProgress({
+      totalChunks: 1,
+      currentChunk: candidates.length ? 1 : 0,
+    });
+  }
+  if (candidates.length) {
+    return aiService.defineVocabularyItems(candidates, cefr, {
+      timeout: VOCAB_TIMEOUT_MS,
+    });
+  }
   return aiService.analyzeWebsiteContent(text, cefr, {
     limit: 24,
     chunksToProcess: 3,
     chunkTimeout: VOCAB_TIMEOUT_MS,
     preferRecall: Boolean(options.preferRecall),
+    onProgress: typeof options.onProgress === 'function' ? options.onProgress : null,
   });
 }
 
@@ -257,32 +282,54 @@ export async function runLessonPreparePipeline({
 
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.vocab,
+    prepare_progress: null,
   });
   console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.vocab}`);
 
   if (!Array.isArray(row.vocabulary_snapshot)) {
     const cefr = row.user_cefr_level || 'B2';
+    const knownWords = new Set();
+    const learnedWords = new Set();
+    try {
+      const [knownResult, wordsResult] = await Promise.all([
+        supabase.from('known_words').select('word').eq('user_id', userId),
+        supabase.from('words').select('word').eq('user_id', userId),
+      ]);
+      (knownResult.data || []).forEach((k) => knownWords.add(String(k.word).toLowerCase()));
+      (wordsResult.data || []).forEach((w) => learnedWords.add(String(w.word).toLowerCase()));
+    } catch (err) {
+      console.log('Could not fetch known/learned words:', err.message);
+    }
     const vocabText = sampleTranscriptForAnalysis(
       row.transcript_text || '',
       VOCAB_SAMPLE_CHARS
     );
+    const vocabOpts = {
+      transcript: row.transcript_text || '',
+      cues: row.transcript_cues || [],
+      excludeWords: [...knownWords, ...learnedWords],
+    };
+    const reportVocabProgress = (p) => {
+      const total = Number(p?.totalChunks) || 0;
+      const current = Number(p?.currentChunk) || 0;
+      if (!total) return;
+      patchLessonPrepare(supabase, userId, lessonId, {
+        prepare_step: PREPARE_STEPS.vocab,
+        prepare_progress: `${Math.min(current, total)}/${total}`,
+      }).catch(() => {});
+    };
     let vocabulary = [];
     try {
-      let vocabResult = await analyzeVocab(vocabText, cefr);
+      let vocabResult = await analyzeVocab(vocabText, cefr, {
+        ...vocabOpts,
+        onProgress: reportVocabProgress,
+      });
       if (!(vocabResult?.vocabulary || []).length) {
-        vocabResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
-      }
-      const knownWords = new Set();
-      const learnedWords = new Set();
-      try {
-        const [knownResult, wordsResult] = await Promise.all([
-          supabase.from('known_words').select('word').eq('user_id', userId),
-          supabase.from('words').select('word').eq('user_id', userId),
-        ]);
-        (knownResult.data || []).forEach((k) => knownWords.add(String(k.word).toLowerCase()));
-        (wordsResult.data || []).forEach((w) => learnedWords.add(String(w.word).toLowerCase()));
-      } catch (err) {
-        console.log('Could not fetch known/learned words:', err.message);
+        vocabResult = await analyzeVocab(vocabText, cefr, {
+          ...vocabOpts,
+          preferRecall: true,
+          onProgress: reportVocabProgress,
+        });
       }
       vocabulary = (vocabResult?.vocabulary || []).map((item) => ({
         ...item,
@@ -292,11 +339,15 @@ export async function runLessonPreparePipeline({
     } catch (vocabErr) {
       console.warn('Vocabulary step failed:', vocabErr?.message);
       try {
-        const retryResult = await analyzeVocab(vocabText, cefr, { preferRecall: true });
+        const retryResult = await analyzeVocab(vocabText, cefr, {
+          ...vocabOpts,
+          preferRecall: true,
+          onProgress: reportVocabProgress,
+        });
         vocabulary = (retryResult?.vocabulary || []).map((item) => ({
           ...item,
-          isKnown: false,
-          isLearned: false,
+          isKnown: knownWords.has(String(item.word || '').toLowerCase()),
+          isLearned: learnedWords.has(String(item.word || '').toLowerCase()),
         }));
       } catch (retryErr) {
         console.warn('Vocabulary retry failed:', retryErr?.message);
@@ -307,12 +358,14 @@ export async function runLessonPreparePipeline({
       user_cefr_level: row.user_cefr_level || 'B2',
       current_step: 2,
       status: 'analyzed',
+      prepare_progress: null,
     });
     row.vocabulary_snapshot = vocabulary;
   }
 
   await patchLessonPrepare(supabase, userId, lessonId, {
     prepare_step: PREPARE_STEPS.highlights,
+    prepare_progress: null,
     summary_status: SUMMARY_STATUS.pending,
     summary_error: null,
   });
