@@ -178,6 +178,25 @@ async function defaultFetchTranscript(videoUrl) {
 
 async function defaultAnalyzeVocab(text, cefr, options = {}) {
   const { aiService } = await import('./aiService.js');
+  const { extractVocabCandidates } = await import('./vocabCandidates.js');
+  const source = options.transcript || text;
+  const candidates = extractVocabCandidates(source, {
+    cues: options.cues,
+    cefr,
+    excludeWords: options.excludeWords,
+    limit: 36,
+  });
+  if (typeof options.onProgress === 'function') {
+    options.onProgress({
+      totalChunks: 1,
+      currentChunk: candidates.length ? 1 : 0,
+    });
+  }
+  if (candidates.length) {
+    return aiService.defineVocabularyItems(candidates, cefr, {
+      timeout: VOCAB_TIMEOUT_MS,
+    });
+  }
   return aiService.analyzeWebsiteContent(text, cefr, {
     limit: 24,
     chunksToProcess: 3,
@@ -268,10 +287,27 @@ export async function runLessonPreparePipeline({
 
   if (!Array.isArray(row.vocabulary_snapshot)) {
     const cefr = row.user_cefr_level || 'B2';
+    const knownWords = new Set();
+    const learnedWords = new Set();
+    try {
+      const [knownResult, wordsResult] = await Promise.all([
+        supabase.from('known_words').select('word').eq('user_id', userId),
+        supabase.from('words').select('word').eq('user_id', userId),
+      ]);
+      (knownResult.data || []).forEach((k) => knownWords.add(String(k.word).toLowerCase()));
+      (wordsResult.data || []).forEach((w) => learnedWords.add(String(w.word).toLowerCase()));
+    } catch (err) {
+      console.log('Could not fetch known/learned words:', err.message);
+    }
     const vocabText = sampleTranscriptForAnalysis(
       row.transcript_text || '',
       VOCAB_SAMPLE_CHARS
     );
+    const vocabOpts = {
+      transcript: row.transcript_text || '',
+      cues: row.transcript_cues || [],
+      excludeWords: [...knownWords, ...learnedWords],
+    };
     const reportVocabProgress = (p) => {
       const total = Number(p?.totalChunks) || 0;
       const current = Number(p?.currentChunk) || 0;
@@ -284,25 +320,15 @@ export async function runLessonPreparePipeline({
     let vocabulary = [];
     try {
       let vocabResult = await analyzeVocab(vocabText, cefr, {
+        ...vocabOpts,
         onProgress: reportVocabProgress,
       });
       if (!(vocabResult?.vocabulary || []).length) {
         vocabResult = await analyzeVocab(vocabText, cefr, {
+          ...vocabOpts,
           preferRecall: true,
           onProgress: reportVocabProgress,
         });
-      }
-      const knownWords = new Set();
-      const learnedWords = new Set();
-      try {
-        const [knownResult, wordsResult] = await Promise.all([
-          supabase.from('known_words').select('word').eq('user_id', userId),
-          supabase.from('words').select('word').eq('user_id', userId),
-        ]);
-        (knownResult.data || []).forEach((k) => knownWords.add(String(k.word).toLowerCase()));
-        (wordsResult.data || []).forEach((w) => learnedWords.add(String(w.word).toLowerCase()));
-      } catch (err) {
-        console.log('Could not fetch known/learned words:', err.message);
       }
       vocabulary = (vocabResult?.vocabulary || []).map((item) => ({
         ...item,
@@ -313,13 +339,14 @@ export async function runLessonPreparePipeline({
       console.warn('Vocabulary step failed:', vocabErr?.message);
       try {
         const retryResult = await analyzeVocab(vocabText, cefr, {
+          ...vocabOpts,
           preferRecall: true,
           onProgress: reportVocabProgress,
         });
         vocabulary = (retryResult?.vocabulary || []).map((item) => ({
           ...item,
-          isKnown: false,
-          isLearned: false,
+          isKnown: knownWords.has(String(item.word || '').toLowerCase()),
+          isLearned: learnedWords.has(String(item.word || '').toLowerCase()),
         }));
       } catch (retryErr) {
         console.warn('Vocabulary retry failed:', retryErr?.message);
