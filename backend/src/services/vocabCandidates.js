@@ -3,18 +3,25 @@
  * below-CEFR lemmas, keep topic words + common phrasal verbs, rank, attach
  * one cue sentence. AI only fills definitions afterwards.
  *
- * commonLemmas.json ranks: first 2500 of google-10000-english (MIT,
- * first20hours). Rank 1–800 ≈ A1, 801–1600 ≈ A2, 1601–2500 ≈ B1.
+ * cefrLemmas.json: first 2500 of google-10000-english (MIT, first20hours),
+ * bucketed A1 (1–800) / A2 (801–1600) / B1 (1601–2500) by frequency rank.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), '../data');
-const COMMON_RANKS = JSON.parse(readFileSync(join(dataDir, 'commonLemmas.json'), 'utf8'));
+const CEFR_LEMMAS = JSON.parse(readFileSync(join(dataDir, 'cefrLemmas.json'), 'utf8'));
 const PHRASAL_LIST = JSON.parse(readFileSync(join(dataDir, 'phrasalVerbs.json'), 'utf8'));
 
 const LEVEL_RANK = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
+
+const LEMMA_LEVEL = new Map();
+for (const level of ['A1', 'A2', 'B1']) {
+  for (const word of CEFR_LEMMAS[level] || []) {
+    if (!LEMMA_LEVEL.has(word)) LEMMA_LEVEL.set(word, level);
+  }
+}
 
 const FUNCTION_WORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'if', 'so', 'as', 'at', 'by', 'for',
@@ -140,16 +147,8 @@ export function lemmaFromToken(raw) {
   return w;
 }
 
-export function commonRank(lemma) {
-  return COMMON_RANKS[lemma] || 0;
-}
-
-export function rankToLevel(rank) {
-  if (!rank) return null;
-  if (rank <= 800) return 'A1';
-  if (rank <= 1600) return 'A2';
-  if (rank <= 2500) return 'B1';
-  return null;
+export function lemmaLevel(lemma) {
+  return LEMMA_LEVEL.get(lemma) || null;
 }
 
 function userLevelRank(cefr) {
@@ -185,7 +184,7 @@ function shouldDropLemma(lemma, cefr, exclude) {
   if (!lemma || lemma.length < 3) return true;
   if (FUNCTION_WORDS.has(lemma)) return true;
   if (exclude.has(lemma)) return true;
-  const level = rankToLevel(commonRank(lemma));
+  const level = lemmaLevel(lemma);
   if (!level) return false;
   return LEVEL_RANK[level] < userLevelRank(cefr);
 }
@@ -235,8 +234,7 @@ export function extractVocabCandidates(text, options = {}) {
   const scored = [];
   for (const [word, count] of counts) {
     if (kinds.get(word) === 'word' && count === 1 && word.length <= 4) continue;
-    const rank = word.includes(' ') ? 0 : commonRank(word);
-    const level = rankToLevel(rank);
+    const level = word.includes(' ') ? null : lemmaLevel(word);
     const rarity = word.includes(' ') ? 4 : level ? Math.max(1, userLevelRank(cefr) - LEVEL_RANK[level] + 1) : 3;
     const lengthBonus = word.length >= 8 ? 1.2 : 1;
     scored.push({

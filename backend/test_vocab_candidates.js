@@ -6,8 +6,7 @@ import {
   lemmaFromToken,
   extractVocabCandidates,
   candidatesToStubVocabulary,
-  rankToLevel,
-  commonRank,
+  lemmaLevel,
 } from './src/services/vocabCandidates.js';
 
 function assert(cond, msg) {
@@ -17,9 +16,9 @@ function assert(cond, msg) {
 assert(lemmaFromToken('Going') === 'go', 'going → go');
 assert(lemmaFromToken("world's") === 'world', 'possessive');
 assert(lemmaFromToken('found') === 'find', 'found → find');
-assert(commonRank('the') === 1, 'the is rank 1');
-assert(rankToLevel(1) === 'A1', 'top ranks are A1');
-assert(rankToLevel(0) === null, 'unknown has no CEFR');
+assert(lemmaLevel('the') === 'A1', 'the is A1');
+assert(lemmaLevel('television') === 'B1', 'television is B1');
+assert(lemmaLevel('payload') === null, 'off-list has no CEFR');
 
 const transcript = `
 Hello and thank you so much for joining me today. I think this is really very nice.
