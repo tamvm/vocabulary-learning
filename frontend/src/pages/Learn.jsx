@@ -842,7 +842,11 @@ export default function Learn() {
 
   useEffect(() => {
     if (!lessonId) return;
-    if (prepareJob?.status !== 'pending') return;
+    const vocabStep = (prepareJob?.steps || []).find((step) => step.id === 'vocab');
+    const shouldPoll =
+      prepareJob?.status === 'pending' ||
+      (vocabStep && vocabStep.state !== 'done' && vocabStep.state !== 'failed');
+    if (!shouldPoll) return;
     let cancelled = false;
     const tick = async () => {
       try {

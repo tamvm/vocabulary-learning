@@ -101,6 +101,7 @@ export function hydrateLessonResponse(lesson) {
   const vocabulary = asArray(lesson.vocabulary_snapshot);
   const studyWords = asArray(lesson.study_words_snapshot);
   const currentStep = inferCurrentStep(lesson);
+  const prepareJob = buildPrepareJobView(lesson);
 
   return {
     lesson: {
@@ -135,13 +136,13 @@ export function hydrateLessonResponse(lesson) {
     summaryStatus: resolveSummaryStatus(lesson),
     summaryError: lesson.summary_error || '',
     prepareStatus: resolvePrepareStatus(lesson),
-    prepareStep: lesson.prepare_step || null,
+    prepareStep: prepareJob.step || lesson.prepare_step || null,
     prepareProgress: lesson.prepare_progress || '',
     prepareError: lesson.prepare_error || '',
     vocabReady:
       Array.isArray(lesson.vocabulary_snapshot) &&
       lesson.vocabulary_snapshot.length > 0,
-    prepareJob: buildPrepareJobView(lesson),
+    prepareJob,
     userCefrLevel: lesson.user_cefr_level || 'B2',
     currentStep,
   };

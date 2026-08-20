@@ -9,14 +9,17 @@ import {
   resolvePrepareStatus,
   resolveSummaryStatus,
   isPrepareStale,
+  isStuckAfterTranscript,
   resumeLessonPrepareIfNeeded,
   vocabSnapshotNeedsPolish,
   formatStepEta,
   PREPARE_STALE_MS,
+  TRANSCRIPT_HANDOFF_STALE_MS,
   PREPARE_STATUS,
   PREPARE_STEPS,
   runLessonPreparePipeline,
   buildPrepareJobView,
+  patchLessonPrepare,
   VOCAB_SAMPLE_CHARS,
 } from './src/services/lessonPrepareJob.js';
 
@@ -105,8 +108,19 @@ const leftoverQuiz = buildPrepareJobView({
   quiz_questions: [{ question: 'Q', options: ['a', 'b', 'c', 'd'], correctIndex: 0 }],
   updated_at: new Date().toISOString(),
 });
-assert(leftoverQuiz.steps[1].state === 'queued', 'vocab not done from leftover quiz');
+assert(leftoverQuiz.steps[1].state === 'running', 'vocab runs next once transcript exists');
 assert(leftoverQuiz.steps[3].state === 'queued', 'quiz leftover hidden until vocab exists');
+
+const handoffJob = buildPrepareJobView({
+  prepare_status: 'pending',
+  prepare_step: 'transcript',
+  transcript_text: 'A'.repeat(80),
+  updated_at: new Date().toISOString(),
+});
+assert(handoffJob.steps[0].state === 'done', 'transcript done from saved captions');
+assert(handoffJob.steps[1].state === 'running', 'vocab is running after transcript, not queued');
+assert(handoffJob.step === PREPARE_STEPS.vocab, 'job step advances to vocab after transcript');
+assert(handoffJob.steps[2].state === 'queued', 'highlights wait for vocab');
 
 const emptyVocabJob = buildPrepareJobView({
   prepare_status: 'ready',
@@ -187,6 +201,10 @@ const result = await runLessonPreparePipeline({
 assert(result.ok === true, 'pipeline ok');
 assert(steps.includes('transcript') && steps.includes('vocab'), 'transcript then vocab');
 assert(steps.includes('highlights') && steps.includes('quiz'), 'highlights and quiz both ran');
+assert(
+  patches.some((p) => p.transcript_text && p.prepare_step === PREPARE_STEPS.vocab),
+  'saving transcript immediately starts the vocab step'
+);
 assert(patches.some((p) => p.prepare_step === PREPARE_STEPS.done), 'marks done');
 assert(patches.some((p) => p.prepare_status === PREPARE_STATUS.ready), 'marks ready');
 
@@ -408,6 +426,90 @@ assert(
     run: () => {},
   }) === true,
   'repairs ready lessons whose vocab words are not in the transcript'
+);
+
+const stuckLesson = {
+  id: 'stuck-after-transcript',
+  prepare_status: 'pending',
+  prepare_step: 'transcript',
+  transcript_text: 'A'.repeat(80),
+  updated_at: new Date(Date.now() - TRANSCRIPT_HANDOFF_STALE_MS - 50).toISOString(),
+};
+assert(isStuckAfterTranscript(stuckLesson) === true, 'detects pending job stuck after transcript');
+assert(
+  isStuckAfterTranscript({
+    ...stuckLesson,
+    updated_at: new Date().toISOString(),
+  }) === false,
+  'fresh transcript handoff is not stuck'
+);
+
+resetPrepareJobsForTests();
+let forcedStarts = 0;
+assert(
+  enqueueLessonPrepare({
+    lesson: { id: stuckLesson.id },
+    run: () => new Promise(() => {}),
+  }) === true,
+  'hangs first worker'
+);
+assert(isPrepareJobInFlight(stuckLesson.id) === true, 'hung worker stays in-flight');
+assert(
+  resumeLessonPrepareIfNeeded({
+    lesson: stuckLesson,
+    run: () => {
+      forcedStarts += 1;
+    },
+  }) === true,
+  'force-resumes hung job stuck after transcript'
+);
+await new Promise((resolve) => setImmediate(resolve));
+await new Promise((resolve) => setImmediate(resolve));
+assert(forcedStarts === 1, 'forced resume actually starts vocab worker');
+
+const progressPatches = [];
+let updateCalls = 0;
+const missingProgressSupabase = {
+  from() {
+    return {
+      update(patch) {
+        updateCalls += 1;
+        const hasProgress = Object.prototype.hasOwnProperty.call(patch, 'prepare_progress');
+        if (hasProgress && updateCalls === 1) {
+          return {
+            eq() {
+              return {
+                eq() {
+                  return Promise.resolve({
+                    error: { message: "Could not find the 'prepare_progress' column" },
+                  });
+                },
+              };
+            },
+          };
+        }
+        progressPatches.push({ ...patch });
+        return {
+          eq() {
+            return {
+              eq() {
+                return Promise.resolve({ error: null });
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+};
+await patchLessonPrepare(missingProgressSupabase, 'user-1', 'lesson-col', {
+  prepare_step: PREPARE_STEPS.vocab,
+  prepare_progress: '0/1@1',
+});
+assert(updateCalls === 2, 'retries patch without the missing column only');
+assert(
+  progressPatches.some((p) => p.prepare_step === PREPARE_STEPS.vocab && !('prepare_progress' in p)),
+  'still writes prepare_step when prepare_progress column is missing'
 );
 
 console.log('test_lesson_prepare_job: OK');
