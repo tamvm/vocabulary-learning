@@ -73,12 +73,26 @@ export function formatStepEta(etaSeconds) {
 }
 
 function parseChunkProgress(raw) {
-  const match = String(raw || '').match(/(\d+)\s*\/\s*(\d+)/);
+  const match = String(raw || '').match(/^(\d+)\s*\/\s*(\d+)(?:@(\d+))?/);
   if (!match) return null;
   const current = Number(match[1]);
   const total = Number(match[2]);
   if (!total) return null;
-  return { current, total };
+  return {
+    current,
+    total,
+    startedAtMs: match[3] ? Number(match[3]) * 1000 : null,
+  };
+}
+
+export function formatChunkProgress(current, total, startedAtMs = null) {
+  const base = `${Math.min(Number(current) || 0, Number(total) || 0)}/${Number(total) || 0}`;
+  if (!startedAtMs) return base;
+  return `${base}@${Math.floor(startedAtMs / 1000)}`;
+}
+
+export function displayChunkProgress(raw) {
+  return String(raw || '').replace(/@\d+$/, '');
 }
 
 function percentForRunningStep(id, lesson, nowMs) {
@@ -88,26 +102,34 @@ function percentForRunningStep(id, lesson, nowMs) {
       return Math.min(99, Math.round((chunks.current / chunks.total) * 100));
     }
   }
-  const started = Date.parse(lesson?.updated_at || lesson?.created_at || 0) || nowMs;
+  const chunks = parseChunkProgress(lesson?.prepare_progress);
+  const started = chunks?.startedAtMs || Date.parse(lesson?.updated_at || lesson?.created_at || 0) || nowMs;
   const elapsed = Math.max(0, nowMs - started);
   const budget = STEP_ETA_MS[id] || 30000;
   return Math.min(90, Math.round((elapsed / budget) * 90));
 }
 
-function etaSecondsForRunningStep(id, percent, lesson, nowMs) {
+function etaSecondsForRunningStep(id, lesson, nowMs) {
   const budget = STEP_ETA_MS[id] || 30000;
   if (id === PREPARE_STEPS.vocab) {
     const chunks = parseChunkProgress(lesson?.prepare_progress);
-    if (chunks && chunks.current > 0) {
-      const started = Date.parse(lesson?.updated_at || 0) || nowMs;
-      const elapsed = Math.max(1, nowMs - started);
+    if (chunks?.startedAtMs && chunks.current > 0) {
+      const elapsed = Math.max(1, nowMs - chunks.startedAtMs);
       const perChunk = elapsed / chunks.current;
       return Math.max(5, Math.ceil((perChunk * (chunks.total - chunks.current)) / 1000));
     }
+    if (chunks) {
+      const remaining = Math.max(0, chunks.total - chunks.current);
+      return Math.max(5, Math.ceil((budget * remaining) / chunks.total / 1000));
+    }
   }
-  const started = Date.parse(lesson?.updated_at || lesson?.created_at || 0) || nowMs;
-  const elapsed = Math.max(0, nowMs - started);
-  return Math.max(5, Math.ceil((budget - elapsed) / 1000));
+  const chunks = parseChunkProgress(lesson?.prepare_progress);
+  const started = chunks?.startedAtMs || null;
+  if (started) {
+    const elapsed = Math.max(0, nowMs - started);
+    return Math.max(5, Math.ceil((budget - elapsed) / 1000));
+  }
+  return Math.max(5, Math.ceil(budget / 1000));
 }
 
 export function buildPrepareJobView(lesson, nowMs = Date.now()) {
@@ -143,12 +165,12 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
     }
     const progress =
       id === PREPARE_STEPS.vocab && lesson?.prepare_progress
-        ? String(lesson.prepare_progress)
+        ? displayChunkProgress(lesson.prepare_progress)
         : '';
     const percent =
       state === 'done' ? 100 : state === 'running' ? percentForRunningStep(id, lesson, nowMs) : 0;
     const etaSeconds =
-      state === 'running' ? etaSecondsForRunningStep(id, percent, lesson, nowMs) : null;
+      state === 'running' ? etaSecondsForRunningStep(id, lesson, nowMs) : null;
     return {
       id,
       label: PREPARE_STEP_LABELS[id],
@@ -435,10 +457,12 @@ export async function runLessonPreparePipeline({
   const needsVocab =
     !Array.isArray(row.vocabulary_snapshot) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot);
   if (needsVocab) {
+    const vocabStartedAtMs = Date.now();
     await patchLessonPrepare(supabase, userId, lessonId, {
       prepare_step: PREPARE_STEPS.vocab,
-      prepare_progress: '0/1',
+      prepare_progress: formatChunkProgress(0, 1, vocabStartedAtMs),
     });
+    row.prepare_progress = formatChunkProgress(0, 1, vocabStartedAtMs);
     console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.vocab}`);
 
     const cefr = row.user_cefr_level || 'B2';
@@ -486,9 +510,13 @@ export async function runLessonPreparePipeline({
       const total = Number(p?.totalChunks) || 0;
       const current = Number(p?.currentChunk) || 0;
       if (!total) return;
+      const started =
+        parseChunkProgress(row.prepare_progress)?.startedAtMs || vocabStartedAtMs;
+      const nextProgress = formatChunkProgress(current, total, started);
+      row.prepare_progress = nextProgress;
       patchLessonPrepare(supabase, userId, lessonId, {
         prepare_step: PREPARE_STEPS.vocab,
-        prepare_progress: `${Math.min(current, total)}/${total}`,
+        prepare_progress: nextProgress,
       }).catch(() => {});
     };
     let vocabulary = Array.isArray(row.vocabulary_snapshot) ? row.vocabulary_snapshot : [];
@@ -535,7 +563,7 @@ export async function runLessonPreparePipeline({
       user_cefr_level: row.user_cefr_level || 'B2',
       current_step: 2,
       status: 'analyzed',
-      prepare_progress: '1/1',
+      prepare_progress: formatChunkProgress(1, 1, vocabStartedAtMs),
     });
     row.vocabulary_snapshot = vocabulary;
   }

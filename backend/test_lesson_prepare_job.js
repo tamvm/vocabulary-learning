@@ -67,14 +67,15 @@ assert(
 const runningJob = buildPrepareJobView({
   prepare_status: 'pending',
   prepare_step: 'vocab',
-  prepare_progress: '2/3',
+  prepare_progress: `2/3@${Math.floor((Date.now() - 40000) / 1000)}`,
   transcript_text: 'A'.repeat(80),
   updated_at: new Date().toISOString(),
 });
 assert(runningJob.steps[0].state === 'done', 'transcript done when text exists');
 assert(runningJob.steps[1].state === 'running', 'vocab running');
-assert(runningJob.steps[1].progress === '2/3', 'vocab progress attached');
+assert(runningJob.steps[1].progress === '2/3', 'vocab progress hides start stamp');
 assert(runningJob.steps[1].percent === 67, 'vocab percent from chunks');
+assert(runningJob.steps[1].etaSeconds >= 5, 'vocab ETA uses step start stamp');
 assert(runningJob.steps[2].state === 'queued', 'highlights queued');
 assert(runningJob.steps[3].id === 'quiz', 'quiz listed');
 

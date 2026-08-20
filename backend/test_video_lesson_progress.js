@@ -124,11 +124,19 @@ assertEqual(hydrated.prepareJob.steps.length, 4, 'hydrate prepareJob has four st
 const summarized = summarizeHistoryLesson({
   id: 'h1',
   title: 'Talk',
-  vocabulary_snapshot: [{ word: 'orbit' }],
   prepare_status: 'pending',
+  prepare_step: 'highlights',
 });
-assertEqual(summarized.vocabReady, true, 'history row exposes vocabReady');
-assertEqual(summarized.vocabulary_snapshot, undefined, 'history row strips snapshot payload');
+assertEqual(summarized.vocabReady, true, 'history row exposes vocabReady from prepare_step');
+assertEqual(
+  summarizeHistoryLesson({
+    id: 'h2',
+    prepare_status: 'pending',
+    prepare_step: 'vocab',
+  }).vocabReady,
+  false,
+  'history row keeps vocab not-ready while still on vocab step'
+);
 
 const dumpHydrated = hydrateLessonResponse({
   ...lesson,

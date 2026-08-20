@@ -53,7 +53,10 @@ export function prepareStepOf(lesson) {
 }
 
 export function prepareProgressOf(lesson) {
-  return lesson?.prepare_progress || lesson?.prepareProgress || '';
+  return String(lesson?.prepare_progress || lesson?.prepareProgress || '').replace(
+    /@\d+$/,
+    ''
+  );
 }
 
 export function isPreparingLesson(lesson) {
@@ -93,8 +96,7 @@ export function prepareJobFromLesson(lesson) {
     else if (
       status === 'pending' &&
       (current === 'highlights' || current === 'quiz') &&
-      (id === 'highlights' || id === 'quiz') &&
-      !(id === 'quiz' && status === 'ready')
+      (id === 'highlights' || id === 'quiz')
     ) {
       state = 'running';
     } else if (status === 'pending' && currentIndex >= 0 && index < currentIndex) {
