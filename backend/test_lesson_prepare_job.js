@@ -389,4 +389,25 @@ assert(
   'repairs ready lessons that have an empty vocabulary snapshot'
 );
 
+resetPrepareJobsForTests();
+assert(
+  resumeLessonPrepareIfNeeded({
+    lesson: {
+      id: 'junk-vocab-ready',
+      prepare_status: 'ready',
+      transcript_text:
+        "there's a bubble and the pricking of the bubble when wealth must be sold. " +
+        'A'.repeat(80),
+      vocabulary_snapshot: [
+        { word: 'ther', definition: 'not a real word' },
+        { word: 'bubbl', definition: 'broken stem' },
+        { word: 'prick', definition: 'wrong stem' },
+      ],
+      updated_at: new Date(Date.now() - 120000).toISOString(),
+    },
+    run: () => {},
+  }) === true,
+  'repairs ready lessons whose vocab words are not in the transcript'
+);
+
 console.log('test_lesson_prepare_job: OK');
