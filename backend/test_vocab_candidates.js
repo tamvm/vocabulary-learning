@@ -21,6 +21,12 @@ assert(lemmaFromToken('bubbles') === 'bubble', 'bubbles → bubble');
 assert(lemmaFromToken('always') === 'always', 'always stays always (not alway)');
 assert(lemmaFromToken('boxes') === 'box', 'boxes → box');
 assert(lemmaFromToken('watches') === 'watch', 'watches → watch');
+assert(lemmaFromToken("won't") !== 'win', "won't must not become win");
+assert(
+  !extractVocabCandidates("The bubble won't burst today.", { cefr: 'B2', limit: 20 })
+    .some((item) => item.word === 'win'),
+  "won't in captions must not surface win"
+);
 assert(lemmaLevel('the') === 'A1', 'the is A1');
 assert(lemmaLevel('television') === 'B1', 'television is B1');
 assert(lemmaLevel('payload') === null, 'off-list has no CEFR');

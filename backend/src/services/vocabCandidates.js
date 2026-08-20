@@ -129,8 +129,8 @@ export function lemmaFromToken(raw) {
     .toLowerCase()
     .replace(/[^a-z'-]/g, '');
   if (!w) return '';
-  // Strip clitics before apostrophe removal: there's → there, they'll → they.
-  w = w.replace(/n't$/, 'n').replace(/'(?:s|re|ve|ll|d)$/, '');
+  // Drop n't entirely so won't≠win (won→win). Remaining bases are function words.
+  w = w.replace(/n't$/, '').replace(/'(?:s|re|ve|ll|d)$/, '');
   w = w.replace(/'/g, '');
   if (!w) return '';
   if (IRREGULAR[w]) return IRREGULAR[w];
