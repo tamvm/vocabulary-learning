@@ -139,13 +139,19 @@ export function lemmaFromToken(raw) {
   if (w.endsWith('ies') && w.length > 4) return `${w.slice(0, -3)}y`;
   if (w.endsWith('ing') && w.length > 5) {
     const stem = w.slice(0, -3);
-    if (stem.length >= 3 && stem.at(-1) === stem.at(-2)) return stem.slice(0, -1);
-    return stem;
+    const collapsed =
+      stem.length >= 3 && stem.at(-1) === stem.at(-2) ? stem.slice(0, -1) : stem;
+    const known = knownLemma(collapsed) || knownLemma(`${collapsed}e`);
+    return known || w;
   }
   if (w.endsWith('ed') && w.length > 4) {
     const stem = w.slice(0, -2);
-    if (stem.endsWith('i')) return `${stem.slice(0, -1)}y`;
-    return stem;
+    const fromI = stem.endsWith('i') ? `${stem.slice(0, -1)}y` : '';
+    const collapsed =
+      stem.length >= 3 && stem.at(-1) === stem.at(-2) ? stem.slice(0, -1) : stem;
+    const known =
+      knownLemma(fromI) || knownLemma(collapsed) || knownLemma(`${collapsed}e`);
+    return known || w;
   }
   // Only strip -es after sibilants (boxes, watches, classes) — not bubbles → bubbl.
   if (w.length > 4 && /(?:[sxz]|ch|sh)es$/.test(w)) {
@@ -153,6 +159,13 @@ export function lemmaFromToken(raw) {
   }
   if (w.endsWith('s') && w.length > 3 && !w.endsWith('ss')) return w.slice(0, -1);
   return w;
+}
+
+function knownLemma(word) {
+  if (!word) return '';
+  if (IRREGULAR[word]) return IRREGULAR[word];
+  if (LEMMA_LEVEL.has(word)) return word;
+  return '';
 }
 
 export function lemmaLevel(lemma) {
@@ -256,6 +269,56 @@ export function extractVocabCandidates(text, options = {}) {
 
   scored.sort((a, b) => b.score - a.score || b.count - a.count || a.word.localeCompare(b.word));
   return scored.slice(0, limit);
+}
+
+/**
+ * True when a vocab headword appears as a transcript token (or simple plural).
+ * Stems like prick/ther/bubbl do not count just because pricking/there's/bubbles exist.
+ */
+export function vocabWordInTranscript(word, transcript) {
+  const target = String(word || '')
+    .toLowerCase()
+    .replace(/[^a-z\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!target) return false;
+  const hay = String(transcript || '').toLowerCase();
+  if (target.includes(' ')) return hay.includes(target);
+
+  const tokens = hay.split(/[^a-z']+/).filter(Boolean);
+  return tokens.some((raw) => {
+    const token = raw.replace(/'/g, '');
+    if (!token) return false;
+    // there's → theres, not a hit for junk stem "ther"
+    if (raw.includes("'")) return token === target;
+    return token === target || token === `${target}s` || token === `${target}es`;
+  });
+}
+
+export function vocabSnapshotGroundedInTranscript(snapshot, transcript) {
+  const items = (Array.isArray(snapshot) ? snapshot : []).filter((item) => item?.word);
+  if (!items.length) return false;
+  const hits = items.filter((item) => vocabWordInTranscript(item.word, transcript)).length;
+  return hits / items.length >= 0.5;
+}
+
+/** Broken local stems (ther/bubbl/prick) that are prefixes of real caption tokens. */
+export function vocabWordLooksLikeBrokenStem(word, transcript) {
+  const target = String(word || '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+  if (target.length < 4) return false;
+  if (vocabWordInTranscript(word, transcript)) return false;
+  const hay = String(transcript || '').toLowerCase();
+  const tokens = hay.split(/[^a-z']+/).map((t) => t.replace(/'/g, '')).filter(Boolean);
+  return tokens.some((token) => token.length >= target.length + 2 && token.startsWith(target));
+}
+
+export function vocabSnapshotLooksBroken(snapshot, transcript) {
+  const items = (Array.isArray(snapshot) ? snapshot : []).filter((item) => item?.word);
+  if (!items.length) return false;
+  const broken = items.filter((item) => vocabWordLooksLikeBrokenStem(item.word, transcript)).length;
+  return broken / items.length >= 0.3;
 }
 
 export function candidatesToStubVocabulary(candidates) {

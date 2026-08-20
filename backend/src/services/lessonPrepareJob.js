@@ -6,6 +6,7 @@
 import { capCues, sampleTranscriptForAnalysis } from './youtubeAnalyzeHelpers.js';
 import { publicAiFailure } from './aiConfig.js';
 import { looksLikeTranscriptDump } from './lessonSummaryNormalize.js';
+import { vocabSnapshotLooksBroken } from './vocabCandidates.js';
 
 export const PREPARE_STATUS = {
   idle: 'idle',
@@ -60,6 +61,12 @@ export function hasVocabWords(lesson) {
   return (
     Array.isArray(lesson?.vocabulary_snapshot) && lesson.vocabulary_snapshot.length > 0
   );
+}
+
+export function vocabSnapshotNeedsRerun(lesson) {
+  if (!hasVocabWords(lesson)) return true;
+  if (vocabSnapshotNeedsPolish(lesson.vocabulary_snapshot)) return true;
+  return vocabSnapshotLooksBroken(lesson.vocabulary_snapshot, lesson.transcript_text || '');
 }
 
 export function vocabSnapshotNeedsPolish(snapshot) {
@@ -149,7 +156,9 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
   const status = resolvePrepareStatus(lesson, nowMs);
   const current = lesson?.prepare_step || null;
   const hasTranscript = hasTranscriptText(lesson);
-  const hasVocab = hasVocabWords(lesson);
+  const hasVocab =
+    hasVocabWords(lesson) &&
+    !vocabSnapshotLooksBroken(lesson.vocabulary_snapshot, lesson.transcript_text || '');
   const hasHighlights = Boolean(
     usableSummary(lesson?.summary, lesson?.transcript_text || '')
   );
@@ -217,6 +226,7 @@ export function isPrepareJobInFlight(lessonId) {
 
 export function resetPrepareJobsForTests() {
   inFlight.clear();
+  recentResumeAt.clear();
 }
 
 export function isPrepareStale(lesson, nowMs = Date.now()) {
@@ -392,7 +402,7 @@ function markVocabPolished(items) {
 
 function firstIncompleteStep(row) {
   if (!hasTranscriptText(row)) return PREPARE_STEPS.transcript;
-  if (!hasVocabWords(row) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
+  if (vocabSnapshotNeedsRerun(row)) {
     return PREPARE_STEPS.vocab;
   }
   if (!usableSummary(row.summary, row.transcript_text)) return PREPARE_STEPS.highlights;
@@ -467,8 +477,7 @@ export async function runLessonPreparePipeline({
     row = { ...row, ...transcriptPatch };
   }
 
-  const needsVocab =
-    !hasVocabWords(row) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot);
+  const needsVocab = vocabSnapshotNeedsRerun(row);
   if (needsVocab) {
     const vocabStartedAtMs = Date.now();
     await patchLessonPrepare(supabase, userId, lessonId, {
@@ -505,11 +514,15 @@ export async function runLessonPreparePipeline({
       limit: 36,
     });
     const localStubs = candidatesToStubVocabulary(localCandidates);
+    const reuseSnapshot =
+      hasVocabWords(row) &&
+      vocabSnapshotNeedsPolish(row.vocabulary_snapshot) &&
+      !vocabSnapshotLooksBroken(row.vocabulary_snapshot, row.transcript_text || '');
     const vocabOpts = {
       transcript: row.transcript_text || '',
       cues: row.transcript_cues || [],
       excludeWords: [...knownWords, ...learnedWords],
-      existingVocabulary: vocabSnapshotNeedsPolish(row.vocabulary_snapshot)
+      existingVocabulary: reuseSnapshot
         ? row.vocabulary_snapshot
         : localStubs.length
           ? localStubs
@@ -517,7 +530,7 @@ export async function runLessonPreparePipeline({
     };
     const persistStubs = async (stubs) => {
       if (!Array.isArray(stubs) || !stubs.length) return;
-      if (hasVocabWords(row) && !vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
+      if (!vocabSnapshotNeedsRerun(row)) {
         return;
       }
       const tagged = annotateVocab(stubs, knownWords, learnedWords);
@@ -550,7 +563,11 @@ export async function runLessonPreparePipeline({
         prepare_progress: nextProgress,
       }).catch(() => {});
     };
-    let vocabulary = Array.isArray(row.vocabulary_snapshot) ? row.vocabulary_snapshot : [];
+    let vocabulary = vocabSnapshotNeedsRerun(row)
+      ? Array.isArray(localStubs)
+        ? localStubs
+        : []
+      : row.vocabulary_snapshot;
     try {
       const vocabResult = await analyzeVocab(vocabText, cefr, {
         ...vocabOpts,
@@ -762,7 +779,7 @@ function stampResumeCooldown(lessonId, nowMs = Date.now()) {
 
 function lessonNeedsContentRepair(lesson) {
   if (!hasTranscriptText(lesson)) return false;
-  if (!hasVocabWords(lesson)) return true;
+  if (vocabSnapshotNeedsRerun(lesson)) return true;
   if (
     !usableSummary(lesson?.summary, lesson?.transcript_text || '') &&
     lesson?.summary_status === SUMMARY_STATUS.failed
