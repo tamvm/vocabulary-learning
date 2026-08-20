@@ -18,6 +18,7 @@ import {
   buildPrepareJobView,
   resumeLessonPrepareIfNeeded,
   isPrepareJobInFlight,
+  hasTranscriptText,
   PREPARE_STATUS,
   PREPARE_STEPS,
   SUMMARY_STATUS,
@@ -171,6 +172,10 @@ router.post('/analyze', async (req, res, next) => {
       videoId,
     });
 
+    const reusedPreview = candidates.find((row) => row.id === reuseId) || {};
+    const startStep = hasTranscriptText(reusedPreview)
+      ? PREPARE_STEPS.vocab
+      : PREPARE_STEPS.transcript;
     const stub = {
       user_id: req.user.id,
       video_url: videoUrl,
@@ -179,7 +184,7 @@ router.post('/analyze', async (req, res, next) => {
       current_step: 2,
       user_cefr_level: userCefrLevel,
       prepare_status: PREPARE_STATUS.pending,
-      prepare_step: PREPARE_STEPS.transcript,
+      prepare_step: startStep,
       prepare_error: null,
       summary_status: SUMMARY_STATUS.pending,
       vocabulary_snapshot: null,
@@ -226,19 +231,20 @@ router.post('/analyze', async (req, res, next) => {
     }
 
     const reused = candidates.find((row) => row.id === lessonId) || {};
+    const lessonForJob = {
+      ...reused,
+      ...stub,
+      id: lessonId,
+      vocabulary_snapshot: null,
+      quiz_questions: null,
+      summary: null,
+      transcript_text: reused.transcript_text || null,
+      transcript_cues: reused.transcript_cues || null,
+    };
     enqueueLessonPrepare({
       supabase: req.supabase,
       userId: req.user.id,
-      lesson: {
-        ...reused,
-        ...stub,
-        id: lessonId,
-        vocabulary_snapshot: null,
-        quiz_questions: null,
-        summary: null,
-        transcript_text: reused.transcript_text || null,
-        transcript_cues: reused.transcript_cues || null,
-      },
+      lesson: lessonForJob,
     });
 
     return res.status(202).json({
@@ -259,11 +265,8 @@ router.post('/analyze', async (req, res, next) => {
       userCefrLevel,
       vocabReady: false,
       prepareStatus: PREPARE_STATUS.pending,
-      prepareStep: PREPARE_STEPS.transcript,
-      prepareJob: buildPrepareJobView({
-        prepare_status: PREPARE_STATUS.pending,
-        prepare_step: PREPARE_STEPS.transcript,
-      }),
+      prepareStep: startStep,
+      prepareJob: buildPrepareJobView(lessonForJob),
     });
   } catch (error) {
     console.error('YouTube analyze error:', error);

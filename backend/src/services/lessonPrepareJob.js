@@ -31,6 +31,8 @@ export const SUMMARY_STATUS = {
 };
 
 export const PREPARE_STALE_MS = 8 * 60 * 1000;
+/** Pending + transcript saved + step still "transcript" longer than this → resume. */
+export const TRANSCRIPT_HANDOFF_STALE_MS = 12 * 1000;
 
 export const STEP_ETA_MS = {
   transcript: 20000,
@@ -170,17 +172,29 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
     highlights: hasHighlights,
     quiz: hasQuiz && hasVocab,
   };
+  const inferredStep =
+    PREPARE_STEP_ORDER.find((id) => !doneFlags[id]) || PREPARE_STEPS.done;
   const currentIndex = PREPARE_STEP_ORDER.indexOf(current);
   const parallelTail =
     status === PREPARE_STATUS.pending &&
-    (current === PREPARE_STEPS.highlights || current === PREPARE_STEPS.quiz);
+    doneFlags.vocab &&
+    (current === PREPARE_STEPS.highlights ||
+      current === PREPARE_STEPS.quiz ||
+      inferredStep === PREPARE_STEPS.highlights);
 
   const steps = PREPARE_STEP_ORDER.map((id, index) => {
     let state = 'queued';
     if (doneFlags[id]) state = 'done';
-    else if (status === PREPARE_STATUS.failed && id === current) state = 'failed';
-    else if (status === PREPARE_STATUS.pending && id === current) state = 'running';
-    else if (parallelTail && (id === PREPARE_STEPS.highlights || id === PREPARE_STEPS.quiz)) {
+    else if (
+      status === PREPARE_STATUS.failed &&
+      (id === current || id === inferredStep)
+    ) {
+      state = 'failed';
+    } else if (status === PREPARE_STATUS.pending && id === inferredStep) {
+      // Derive running from saved data so vocab is not "queued" while
+      // prepare_step still says transcript after captions were written.
+      state = 'running';
+    } else if (parallelTail && (id === PREPARE_STEPS.highlights || id === PREPARE_STEPS.quiz)) {
       state = 'running';
     } else if (status === PREPARE_STATUS.pending && currentIndex >= 0 && index < currentIndex) {
       state = doneFlags[id] ? 'done' : 'queued';
@@ -206,7 +220,14 @@ export function buildPrepareJobView(lesson, nowMs = Date.now()) {
 
   return {
     status,
-    step: current === PREPARE_STEPS.done ? PREPARE_STEPS.done : current,
+    step:
+      status === PREPARE_STATUS.pending &&
+      inferredStep &&
+      inferredStep !== PREPARE_STEPS.done
+        ? inferredStep
+        : current === PREPARE_STEPS.done
+          ? PREPARE_STEPS.done
+          : current,
     error: lesson?.prepare_error || '',
     steps,
   };
@@ -219,6 +240,8 @@ export const VOCAB_TIMEOUT_MS = 90000;
 const MAX_CUES = 2500;
 
 const inFlight = new Set();
+const inFlightGen = new Map();
+const pendingRerun = new Set();
 
 export function isPrepareJobInFlight(lessonId) {
   return inFlight.has(lessonId);
@@ -226,6 +249,8 @@ export function isPrepareJobInFlight(lessonId) {
 
 export function resetPrepareJobsForTests() {
   inFlight.clear();
+  inFlightGen.clear();
+  pendingRerun.clear();
   recentResumeAt.clear();
 }
 
@@ -287,14 +312,22 @@ export async function patchLessonPrepare(supabase, userId, lessonId, patch) {
     .eq('id', lessonId)
     .eq('user_id', userId);
 
-  if (error && OPTIONAL_COLUMNS.some((col) => String(error.message || '').includes(col))) {
-    const fallback = { ...withStatus };
-    for (const col of OPTIONAL_COLUMNS) delete fallback[col];
-    ({ error } = await supabase
-      .from('video_lessons')
-      .update(fallback)
-      .eq('id', lessonId)
-      .eq('user_id', userId));
+  if (error) {
+    const missing = OPTIONAL_COLUMNS.filter((col) =>
+      String(error.message || '').includes(col)
+    );
+    if (missing.length) {
+      const fallback = { ...withStatus };
+      for (const col of missing) delete fallback[col];
+      ({ error } = await supabase
+        .from('video_lessons')
+        .update(fallback)
+        .eq('id', lessonId)
+        .eq('user_id', userId));
+    }
+  }
+  if (error) {
+    console.warn(`[learn-job] ${lessonId} patch failed:`, error.message);
   }
   return error;
 }
@@ -463,6 +496,7 @@ export async function runLessonPreparePipeline({
       typeof transcriptResult.videoInfo?.duration === 'number'
         ? transcriptResult.videoInfo.duration
         : null;
+    const vocabStartedAtMs = Date.now();
     const transcriptPatch = {
       title: transcriptResult.title || transcriptResult.videoInfo?.title || row.title,
       thumbnail_url: transcriptResult.videoInfo?.thumbnail || row.thumbnail_url || null,
@@ -471,7 +505,9 @@ export async function runLessonPreparePipeline({
       chapters: chapters.length ? chapters : row.chapters || null,
       duration_seconds: durationSeconds,
       transcript_provider: transcriptResult.provider || null,
-      prepare_step: PREPARE_STEPS.transcript,
+      prepare_status: PREPARE_STATUS.pending,
+      prepare_step: PREPARE_STEPS.vocab,
+      prepare_progress: formatChunkProgress(0, 1, vocabStartedAtMs),
     };
     await patchLessonPrepare(supabase, userId, lessonId, transcriptPatch);
     row = { ...row, ...transcriptPatch };
@@ -479,7 +515,8 @@ export async function runLessonPreparePipeline({
 
   const needsVocab = vocabSnapshotNeedsRerun(row);
   if (needsVocab) {
-    const vocabStartedAtMs = Date.now();
+    const vocabStartedAtMs =
+      parseChunkProgress(row.prepare_progress)?.startedAtMs || Date.now();
     await patchLessonPrepare(supabase, userId, lessonId, {
       prepare_step: PREPARE_STEPS.vocab,
       prepare_progress: formatChunkProgress(0, 1, vocabStartedAtMs),
@@ -746,10 +783,18 @@ export async function runLessonPreparePipeline({
   return { ok: vocabOk, step: vocabOk ? PREPARE_STEPS.done : PREPARE_STEPS.vocab };
 }
 
-export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
+export function enqueueLessonPrepare({ supabase, userId, lesson, run, force = false } = {}) {
   const lessonId = lesson?.id;
-  if (!lessonId || inFlight.has(lessonId)) return false;
+  if (!lessonId) return false;
+  if (inFlight.has(lessonId) && !force) {
+    pendingRerun.add(lessonId);
+    console.log(`[learn-job] ${lessonId} already in-flight; queued rerun`);
+    return false;
+  }
+  const gen = (inFlightGen.get(lessonId) || 0) + 1;
+  inFlightGen.set(lessonId, gen);
   inFlight.add(lessonId);
+  pendingRerun.delete(lessonId);
   console.log(`[learn-job] ${lessonId} queued`);
   const job =
     run || (() => runLessonPreparePipeline({ supabase, userId, lesson }));
@@ -760,7 +805,24 @@ export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
         console.error('Prepare pipeline failed:', error?.message || error);
       })
       .finally(() => {
+        if (inFlightGen.get(lessonId) !== gen) return;
         inFlight.delete(lessonId);
+        if (!pendingRerun.has(lessonId) || !supabase || !userId) return;
+        pendingRerun.delete(lessonId);
+        supabase
+          .from('video_lessons')
+          .select('*')
+          .eq('id', lessonId)
+          .eq('user_id', userId)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (!data) return;
+            if (firstIncompleteStep(data) === PREPARE_STEPS.done) return;
+            enqueueLessonPrepare({ supabase, userId, lesson: data });
+          })
+          .catch((err) => {
+            console.warn('Prepare rerun fetch failed:', err?.message || err);
+          });
       });
   });
   return true;
@@ -789,10 +851,21 @@ function lessonNeedsContentRepair(lesson) {
   return false;
 }
 
+export function isStuckAfterTranscript(lesson, nowMs = Date.now()) {
+  if (lesson?.prepare_status !== PREPARE_STATUS.pending) return false;
+  if (!hasTranscriptText(lesson)) return false;
+  if (!vocabSnapshotNeedsRerun(lesson)) return false;
+  const step = lesson.prepare_step;
+  if (step && step !== PREPARE_STEPS.transcript) return false;
+  const updated = Date.parse(lesson.updated_at || lesson.created_at || 0) || 0;
+  return Boolean(updated && nowMs - updated >= TRANSCRIPT_HANDOFF_STALE_MS);
+}
+
 /** Restart a DB-pending job, or repair ready lessons missing vocab/highlights. */
 export function resumeLessonPrepareIfNeeded({ supabase, userId, lesson, run } = {}) {
   if (!lesson?.id) return false;
-  if (isPrepareJobInFlight(lesson.id)) return false;
+  const stuck = isStuckAfterTranscript(lesson);
+  if (isPrepareJobInFlight(lesson.id) && !stuck) return false;
 
   const pending = lesson.prepare_status === PREPARE_STATUS.pending;
   const repair =
@@ -802,15 +875,19 @@ export function resumeLessonPrepareIfNeeded({ supabase, userId, lesson, run } = 
 
   if (!pending && !repair) return false;
 
-  if (repair) {
+  if (repair && !stuck) {
     const last = recentResumeAt.get(lesson.id) || 0;
-    if (Date.now() - last < RESUME_COOLDOWN_MS) return false;
+    const cooldown =
+      hasTranscriptText(lesson) && vocabSnapshotNeedsRerun(lesson)
+        ? 15 * 1000
+        : RESUME_COOLDOWN_MS;
+    if (Date.now() - last < cooldown) return false;
     const updated = Date.parse(lesson.updated_at || lesson.created_at || 0) || 0;
-    if (updated && Date.now() - updated < RESUME_COOLDOWN_MS) return false;
+    if (updated && Date.now() - updated < cooldown) return false;
   }
 
   stampResumeCooldown(lesson.id);
-  return enqueueLessonPrepare({ supabase, userId, lesson, run });
+  return enqueueLessonPrepare({ supabase, userId, lesson, run, force: stuck });
 }
 
 /** @deprecated use enqueueLessonPrepare */

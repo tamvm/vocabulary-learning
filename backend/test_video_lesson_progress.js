@@ -121,6 +121,20 @@ assertEqual(hydrated.vocabReady, true, 'hydrate vocabReady when snapshot exists'
 assertEqual(hydrated.prepareProgress, '', 'hydrate default prepareProgress');
 assertEqual(hydrated.prepareJob.steps.length, 4, 'hydrate prepareJob has four steps');
 
+const handoffHydrated = hydrateLessonResponse({
+  ...lesson,
+  vocabulary_snapshot: [],
+  prepare_status: 'pending',
+  prepare_step: 'transcript',
+  transcript_text: 'A'.repeat(80),
+});
+assertEqual(handoffHydrated.prepareStep, 'vocab', 'hydrate advances step to vocab after transcript');
+assertEqual(
+  handoffHydrated.prepareJob.steps[1].state,
+  'running',
+  'hydrate shows vocab running after transcript'
+);
+
 const summarized = summarizeHistoryLesson({
   id: 'h1',
   title: 'Talk',
