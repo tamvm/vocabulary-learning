@@ -752,6 +752,14 @@ export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
 const RESUME_COOLDOWN_MS = 90 * 1000;
 const recentResumeAt = new Map();
 
+function stampResumeCooldown(lessonId, nowMs = Date.now()) {
+  const cutoff = nowMs - 2 * RESUME_COOLDOWN_MS;
+  for (const [id, at] of recentResumeAt) {
+    if (at < cutoff) recentResumeAt.delete(id);
+  }
+  recentResumeAt.set(lessonId, nowMs);
+}
+
 function lessonNeedsContentRepair(lesson) {
   if (!hasTranscriptText(lesson)) return false;
   if (!hasVocabWords(lesson)) return true;
@@ -784,7 +792,7 @@ export function resumeLessonPrepareIfNeeded({ supabase, userId, lesson, run } = 
     if (updated && Date.now() - updated < RESUME_COOLDOWN_MS) return false;
   }
 
-  recentResumeAt.set(lesson.id, Date.now());
+  stampResumeCooldown(lesson.id);
   return enqueueLessonPrepare({ supabase, userId, lesson, run });
 }
 
