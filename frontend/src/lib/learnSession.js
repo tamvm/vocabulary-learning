@@ -159,10 +159,7 @@ export function lessonNeedsReanalyze(data) {
   if (data?.prepareStatus === 'pending') return false;
   const hasVocab = Array.isArray(data?.vocabulary) && data.vocabulary.length > 0;
   const hasStudy = Array.isArray(data?.studyWords) && data.studyWords.length > 0;
-  const hasQuiz = Array.isArray(data?.questions) && data.questions.length > 0;
-  const hasCues = Array.isArray(data?.cues) && data.cues.length > 0;
-  const hasSummary = Boolean(data?.summary);
-  if (hasVocab || hasStudy || hasQuiz || hasCues || hasSummary) return false;
+  if (hasVocab || hasStudy) return false;
   return Boolean(data?.lesson?.videoUrl);
 }
 
