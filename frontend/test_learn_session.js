@@ -11,6 +11,7 @@ import {
   lessonNeedsReanalyze,
   lessonScoreLabel,
   lessonThumbnail,
+  lessonVideoUrl,
   reuseSavedLessonId,
   reuseUnfinishedLessonId,
   statusTone,
@@ -74,6 +75,22 @@ assertEqual(
   'https://img.youtube.com/vi/abcdefghijk/mqdefault.jpg',
   'falls back to YouTube thumbnail'
 );
+assertEqual(
+  lessonVideoUrl({ video_url: 'https://youtu.be/abcdefghijk' }),
+  'https://youtu.be/abcdefghijk',
+  'prefers stored video_url'
+);
+assertEqual(
+  lessonVideoUrl({ videoUrl: 'https://www.youtube.com/watch?v=abcdefghijk' }),
+  'https://www.youtube.com/watch?v=abcdefghijk',
+  'accepts camelCase videoUrl'
+);
+assertEqual(
+  lessonVideoUrl({ video_id: 'abcdefghijk' }),
+  'https://www.youtube.com/watch?v=abcdefghijk',
+  'builds watch URL from video_id'
+);
+assertEqual(lessonVideoUrl({}), null, 'missing url and id returns null');
 
 assertEqual(
   extractYoutubeId('https://www.youtube.com/watch?v=abcdefghijk'),

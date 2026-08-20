@@ -178,6 +178,15 @@ export function lessonThumbnail(lesson) {
   return null;
 }
 
+/** Canonical YouTube watch URL for a saved lesson (copy/share). */
+export function lessonVideoUrl(lesson) {
+  const raw = lesson?.video_url || lesson?.videoUrl || '';
+  if (raw && extractYoutubeId(raw)) return raw;
+  const id = lesson?.video_id || extractYoutubeId(raw);
+  if (id) return `https://www.youtube.com/watch?v=${id}`;
+  return raw || null;
+}
+
 export function stepLabel(lesson) {
   if (isPreparingLesson(lesson)) {
     return prepareStepLabel(prepareStepOf(lesson), prepareProgressOf(lesson));
