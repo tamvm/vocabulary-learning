@@ -16,6 +16,11 @@ function assert(cond, msg) {
 assert(lemmaFromToken('Going') === 'go', 'going → go');
 assert(lemmaFromToken("world's") === 'world', 'possessive');
 assert(lemmaFromToken('found') === 'find', 'found → find');
+assert(lemmaFromToken("there's") === 'there', "there's → there");
+assert(lemmaFromToken('bubbles') === 'bubble', 'bubbles → bubble');
+assert(lemmaFromToken('always') === 'always', 'always stays always (not alway)');
+assert(lemmaFromToken('boxes') === 'box', 'boxes → box');
+assert(lemmaFromToken('watches') === 'watch', 'watches → watch');
 assert(lemmaLevel('the') === 'A1', 'the is A1');
 assert(lemmaLevel('television') === 'B1', 'television is B1');
 assert(lemmaLevel('payload') === null, 'off-list has no CEFR');
@@ -60,5 +65,21 @@ const easy = extractVocabCandidates(
   { cefr: 'B2', limit: 20 }
 );
 assert(easy.length < 5, 'simple A1 text yields few B2 candidates');
+
+// Bloomberg Ray Dalio / AI bubble short (WZ7mmTrSgxI) — must surface real lemmas, not ther/bubbl.
+const dalio = `
+there's AI and the desire for AI sovereignty. Debt markets are being flooded with AI.
+All great technology changes produce bubbles. And the reason they produce bubbles is
+because nobody can get it exactly right. There is a vulnerability and bubbles.
+I think it is a bubble that will burst eventually. We can measure a bubble.
+There is the pricking of the bubble when wealth must be sold to get the money.
+`;
+const dalioWords = extractVocabCandidates(dalio, { cefr: 'B2', limit: 36 }).map((item) => item.word);
+assert(dalioWords.includes('bubble'), 'Dalio clip keeps bubble');
+assert(dalioWords.includes('sovereignty') || dalioWords.includes('vulnerability'), 'Dalio clip keeps topic words');
+assert(!dalioWords.includes('ther'), "Dalio clip must not keep ther from there's");
+assert(!dalioWords.includes('bubbl'), 'Dalio clip must not keep bubbl from bubbles');
+assert(!dalioWords.includes('there'), 'there remains a function word drop');
+assert(dalioWords.length > 0, 'Dalio clip yields candidates');
 
 console.log('test_vocab_candidates: OK');
