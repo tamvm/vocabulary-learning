@@ -10,9 +10,11 @@ import {
   Pencil,
   RefreshCw,
   Search,
+  Copy,
+  Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatRelativeTime } from '@/lib/utils';
+import { copyToClipboard, formatRelativeTime } from '@/lib/utils';
 import PrepareJobPanel from '@/components/Learn/PrepareJobPanel';
 import {
   isUnfinishedLesson,
@@ -21,6 +23,7 @@ import {
   latestUnfinished,
   lessonScoreLabel,
   lessonThumbnail,
+  lessonVideoUrl,
   prepareJobFromLesson,
   statusTone,
   stepLabel,
@@ -57,10 +60,18 @@ function SessionRow({
     : 'Open';
   const [editing, setEditing] = React.useState(false);
   const [titleDraft, setTitleDraft] = React.useState(lesson.title || '');
+  const [copied, setCopied] = React.useState(false);
+  const videoUrl = lessonVideoUrl(lesson);
 
   React.useEffect(() => {
     setTitleDraft(lesson.title || '');
   }, [lesson.title]);
+
+  React.useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const saveTitle = () => {
     const next = titleDraft.trim();
@@ -71,6 +82,20 @@ function SessionRow({
     }
     onRename(lesson.id, next);
     setEditing(false);
+  };
+
+  const handleCopyLink = async () => {
+    if (!videoUrl) {
+      toast.error('This video has no saved URL');
+      return;
+    }
+    try {
+      await copyToClipboard(videoUrl);
+      setCopied(true);
+      toast.success('Video link copied');
+    } catch (_) {
+      toast.error('Could not copy link');
+    }
   };
 
   return (
@@ -142,6 +167,20 @@ function SessionRow({
             Quiz
           </button>
         )}
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          disabled={busy || !videoUrl}
+          aria-label="Copy video link"
+          title="Copy video link"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 disabled:opacity-50 transition"
+        >
+          {copied ? (
+            <Check className="w-4 h-4 text-emerald-500" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
+        </button>
         <button
           type="button"
           onClick={() => setEditing(true)}
