@@ -8,6 +8,7 @@ import {
   hydrateLessonResponse,
   pickLessonToReuse,
   pickProgressFields,
+  summarizeHistoryLesson,
 } from '../services/videoLessonProgress.js';
 import {
   enqueueLessonPrepare,
@@ -15,6 +16,8 @@ import {
   resolvePrepareStatus,
   resolveSummaryStatus,
   buildPrepareJobView,
+  resumeLessonPrepareIfNeeded,
+  isPrepareJobInFlight,
   PREPARE_STATUS,
   PREPARE_STEPS,
   SUMMARY_STATUS,
@@ -45,6 +48,24 @@ const progressSchema = Joi.object({
   userCefrLevel: Joi.string().max(10),
   title: Joi.string().trim().min(1).max(200),
 }).min(1);
+
+function resumePendingLessonJobs(supabase, userId, pendingIds) {
+  for (const id of (pendingIds || []).slice(0, 8)) {
+    if (!id || isPrepareJobInFlight(id)) continue;
+    supabase
+      .from('video_lessons')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) resumeLessonPrepareIfNeeded({ supabase, userId, lesson: data });
+      })
+      .catch((err) => {
+        console.warn('Resume prepare failed:', err?.message || err);
+      });
+  }
+}
 
 function normalizeChapters(chapters) {
   if (!Array.isArray(chapters) || !chapters.length) return [];
@@ -214,8 +235,9 @@ router.post('/analyze', async (req, res, next) => {
         id: lessonId,
         vocabulary_snapshot: null,
         quiz_questions: null,
-        transcript_text: null,
         summary: null,
+        transcript_text: reused.transcript_text || null,
+        transcript_cues: reused.transcript_cues || null,
       },
     });
 
@@ -490,8 +512,13 @@ router.get('/history', async (req, res, next) => {
       lessons = data || [];
     }
 
+    const pendingIds = lessons
+      .filter((row) => row.prepare_status === PREPARE_STATUS.pending)
+      .map((row) => row.id);
+    resumePendingLessonJobs(req.supabase, req.user.id, pendingIds);
+
     res.json({
-      lessons,
+      lessons: lessons.map(summarizeHistoryLesson),
       total: lessons.length,
     });
   } catch (error) {
@@ -523,6 +550,12 @@ router.get('/lessons/:id', async (req, res, next) => {
         message: 'Lesson not found',
       });
     }
+
+    resumeLessonPrepareIfNeeded({
+      supabase: req.supabase,
+      userId: req.user.id,
+      lesson,
+    });
 
     res.json(hydrateLessonResponse(lesson));
   } catch (error) {

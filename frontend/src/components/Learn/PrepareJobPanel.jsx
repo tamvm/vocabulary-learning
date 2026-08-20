@@ -16,23 +16,35 @@ export default function PrepareJobPanel({ job, className = '', compact = false }
           Background job
         </p>
       ) : null}
-      <ol className={compact ? 'space-y-1.5' : 'mt-3 space-y-2'}>
+      <ol className={compact ? 'space-y-2' : 'mt-3 space-y-3'}>
         {steps.map((step) => (
-          <li key={step.id} className="flex items-center gap-2 text-sm">
-            <StepIcon state={step.state} />
-            <span
-              className={
-                step.state === 'running'
-                  ? 'font-medium text-gray-900 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-300'
-              }
-            >
-              {step.label}
-              {step.progress && step.state === 'running' ? ` ${step.progress}` : ''}
-            </span>
-            <span className="ml-auto text-[11px] uppercase tracking-wide text-gray-400">
-              {step.state}
-            </span>
+          <li key={step.id}>
+            <div className="flex items-center gap-2 text-sm">
+              <StepIcon state={step.state} />
+              <span
+                className={
+                  step.state === 'running'
+                    ? 'font-medium text-gray-900 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-300'
+                }
+              >
+                {step.label}
+                {step.progress && step.state === 'running' ? ` ${step.progress}` : ''}
+              </span>
+              <span className="ml-auto text-[11px] uppercase tracking-wide text-gray-400">
+                {stepPercentLabel(step)}
+              </span>
+            </div>
+            {step.state === 'running' || (step.percent > 0 && step.state !== 'queued') ? (
+              <div className="mt-1 ml-6 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    step.state === 'failed' ? 'bg-red-400' : 'bg-primary-500'
+                  }`}
+                  style={{ width: `${Math.max(step.state === 'running' ? 8 : 0, step.percent || 0)}%` }}
+                />
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>
@@ -41,6 +53,18 @@ export default function PrepareJobPanel({ job, className = '', compact = false }
       ) : null}
     </div>
   );
+}
+
+function stepPercentLabel(step) {
+  if (step.state === 'done') return '100%';
+  if (step.state === 'queued') return 'queued';
+  if (step.state === 'failed') return 'failed';
+  const percent = Number(step.percent) || 0;
+  const eta = step.etaLabel || '';
+  if (percent > 0 && eta) return `${percent}% · ${eta} left`;
+  if (percent > 0) return `${percent}%`;
+  if (eta) return `${eta} left`;
+  return 'running';
 }
 
 function StepIcon({ state }) {

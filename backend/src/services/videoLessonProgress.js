@@ -26,6 +26,7 @@ export const HISTORY_LIST_COLUMNS = [
   'prepare_status',
   'prepare_step',
   'prepare_progress',
+  'vocabulary_snapshot',
 ].join(', ');
 
 export const HISTORY_LIST_COLUMNS_FALLBACK = [
@@ -84,6 +85,14 @@ export function asAnswerMap(value) {
     }
   }
   return mapped;
+}
+
+export function summarizeHistoryLesson(row) {
+  if (!row) return row;
+  const vocabReady = row.vocabulary_snapshot != null;
+  const next = { ...row, vocabReady };
+  delete next.vocabulary_snapshot;
+  return next;
 }
 
 export function hydrateLessonResponse(lesson) {

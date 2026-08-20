@@ -13,6 +13,7 @@ import {
   isUnfinishedLesson,
   pickLessonToReuse,
   pickProgressFields,
+  summarizeHistoryLesson,
 } from './src/services/videoLessonProgress.js';
 
 let failed = 0;
@@ -119,6 +120,15 @@ assertEqual(hydrated.prepareStatus, 'idle', 'hydrate default prepareStatus');
 assertEqual(hydrated.vocabReady, true, 'hydrate vocabReady when snapshot exists');
 assertEqual(hydrated.prepareProgress, '', 'hydrate default prepareProgress');
 assertEqual(hydrated.prepareJob.steps.length, 4, 'hydrate prepareJob has four steps');
+
+const summarized = summarizeHistoryLesson({
+  id: 'h1',
+  title: 'Talk',
+  vocabulary_snapshot: [{ word: 'orbit' }],
+  prepare_status: 'pending',
+});
+assertEqual(summarized.vocabReady, true, 'history row exposes vocabReady');
+assertEqual(summarized.vocabulary_snapshot, undefined, 'history row strips snapshot payload');
 
 const dumpHydrated = hydrateLessonResponse({
   ...lesson,
