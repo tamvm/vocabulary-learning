@@ -56,6 +56,12 @@ export function hasTranscriptText(lesson) {
   return String(lesson?.transcript_text || '').trim().length >= 80;
 }
 
+export function hasVocabWords(lesson) {
+  return (
+    Array.isArray(lesson?.vocabulary_snapshot) && lesson.vocabulary_snapshot.length > 0
+  );
+}
+
 export function vocabSnapshotNeedsPolish(snapshot) {
   if (!Array.isArray(snapshot) || !snapshot.length) return false;
   return snapshot.some(
@@ -95,48 +101,55 @@ export function displayChunkProgress(raw) {
   return String(raw || '').replace(/@\d+$/, '');
 }
 
+function stepStartedAtMs(lesson, nowMs) {
+  const chunks = parseChunkProgress(lesson?.prepare_progress);
+  if (chunks?.startedAtMs) return chunks.startedAtMs;
+  return Date.parse(lesson?.updated_at || lesson?.created_at || 0) || nowMs;
+}
+
 function percentForRunningStep(id, lesson, nowMs) {
+  const budget = STEP_ETA_MS[id] || 30000;
+  const started = stepStartedAtMs(lesson, nowMs);
+  const elapsed = Math.max(0, nowMs - started);
+  const timePct = Math.min(90, Math.round((elapsed / budget) * 90));
+
   if (id === PREPARE_STEPS.vocab) {
     const chunks = parseChunkProgress(lesson?.prepare_progress);
     if (chunks) {
-      return Math.min(99, Math.round((chunks.current / chunks.total) * 100));
+      if (chunks.current >= chunks.total) return 99;
+      const floor = Math.round((chunks.current / chunks.total) * 100);
+      // Long single AI define stays on 0/1 — keep the bar moving with wall time.
+      return Math.min(99, Math.max(floor, timePct));
     }
   }
-  const chunks = parseChunkProgress(lesson?.prepare_progress);
-  const started = chunks?.startedAtMs || Date.parse(lesson?.updated_at || lesson?.created_at || 0) || nowMs;
-  const elapsed = Math.max(0, nowMs - started);
-  const budget = STEP_ETA_MS[id] || 30000;
-  return Math.min(90, Math.round((elapsed / budget) * 90));
+  return timePct;
 }
 
 function etaSecondsForRunningStep(id, lesson, nowMs) {
   const budget = STEP_ETA_MS[id] || 30000;
-  if (id === PREPARE_STEPS.vocab) {
-    const chunks = parseChunkProgress(lesson?.prepare_progress);
-    if (chunks?.startedAtMs && chunks.current > 0) {
-      const elapsed = Math.max(1, nowMs - chunks.startedAtMs);
-      const perChunk = elapsed / chunks.current;
-      return Math.max(5, Math.ceil((perChunk * (chunks.total - chunks.current)) / 1000));
-    }
-    if (chunks) {
-      const remaining = Math.max(0, chunks.total - chunks.current);
-      return Math.max(5, Math.ceil((budget * remaining) / chunks.total / 1000));
-    }
-  }
+  const started = stepStartedAtMs(lesson, nowMs);
+  const elapsed = Math.max(0, nowMs - started);
   const chunks = parseChunkProgress(lesson?.prepare_progress);
-  const started = chunks?.startedAtMs || null;
-  if (started) {
-    const elapsed = Math.max(0, nowMs - started);
-    return Math.max(5, Math.ceil((budget - elapsed) / 1000));
+
+  if (
+    id === PREPARE_STEPS.vocab &&
+    chunks &&
+    chunks.current > 0 &&
+    chunks.current < chunks.total
+  ) {
+    const perChunk = elapsed / chunks.current;
+    return Math.max(5, Math.ceil((perChunk * (chunks.total - chunks.current)) / 1000));
   }
-  return Math.max(5, Math.ceil(budget / 1000));
+
+  // Same baseline as percent — always count down as time passes.
+  return Math.max(5, Math.ceil((budget - elapsed) / 1000));
 }
 
 export function buildPrepareJobView(lesson, nowMs = Date.now()) {
   const status = resolvePrepareStatus(lesson, nowMs);
   const current = lesson?.prepare_step || null;
   const hasTranscript = hasTranscriptText(lesson);
-  const hasVocab = Array.isArray(lesson?.vocabulary_snapshot);
+  const hasVocab = hasVocabWords(lesson);
   const hasHighlights = Boolean(
     usableSummary(lesson?.summary, lesson?.transcript_text || '')
   );
@@ -379,7 +392,7 @@ function markVocabPolished(items) {
 
 function firstIncompleteStep(row) {
   if (!hasTranscriptText(row)) return PREPARE_STEPS.transcript;
-  if (!Array.isArray(row.vocabulary_snapshot) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
+  if (!hasVocabWords(row) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
     return PREPARE_STEPS.vocab;
   }
   if (!usableSummary(row.summary, row.transcript_text)) return PREPARE_STEPS.highlights;
@@ -455,7 +468,7 @@ export async function runLessonPreparePipeline({
   }
 
   const needsVocab =
-    !Array.isArray(row.vocabulary_snapshot) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot);
+    !hasVocabWords(row) || vocabSnapshotNeedsPolish(row.vocabulary_snapshot);
   if (needsVocab) {
     const vocabStartedAtMs = Date.now();
     await patchLessonPrepare(supabase, userId, lessonId, {
@@ -478,35 +491,53 @@ export async function runLessonPreparePipeline({
     } catch (err) {
       console.log('Could not fetch known/learned words:', err.message);
     }
+    const { extractVocabCandidates, candidatesToStubVocabulary } = await import(
+      './vocabCandidates.js'
+    );
     const vocabText = sampleTranscriptForAnalysis(
       row.transcript_text || '',
       VOCAB_SAMPLE_CHARS
     );
+    const localCandidates = extractVocabCandidates(row.transcript_text || '', {
+      cues: row.transcript_cues || [],
+      cefr,
+      excludeWords: [...knownWords, ...learnedWords],
+      limit: 36,
+    });
+    const localStubs = candidatesToStubVocabulary(localCandidates);
     const vocabOpts = {
       transcript: row.transcript_text || '',
       cues: row.transcript_cues || [],
       excludeWords: [...knownWords, ...learnedWords],
       existingVocabulary: vocabSnapshotNeedsPolish(row.vocabulary_snapshot)
         ? row.vocabulary_snapshot
-        : undefined,
+        : localStubs.length
+          ? localStubs
+          : undefined,
     };
-    const persistStubs = (stubs) => {
+    const persistStubs = async (stubs) => {
       if (!Array.isArray(stubs) || !stubs.length) return;
-      if (Array.isArray(row.vocabulary_snapshot) && !vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
+      if (hasVocabWords(row) && !vocabSnapshotNeedsPolish(row.vocabulary_snapshot)) {
         return;
       }
       const tagged = annotateVocab(stubs, knownWords, learnedWords);
       row.vocabulary_snapshot = tagged;
-      patchLessonPrepare(supabase, userId, lessonId, {
+      await patchLessonPrepare(supabase, userId, lessonId, {
         vocabulary_snapshot: tagged,
         user_cefr_level: row.user_cefr_level || 'B2',
         current_step: 2,
         status: 'analyzed',
         prepare_step: PREPARE_STEPS.vocab,
-      }).catch(() => {});
+      });
     };
+    // Save local candidates immediately so Study can open before AI polish.
+    if (localStubs.length) {
+      await persistStubs(localStubs);
+    }
     const reportVocabProgress = (p) => {
-      if (Array.isArray(p?.stubs)) persistStubs(p.stubs);
+      if (Array.isArray(p?.stubs)) {
+        persistStubs(p.stubs).catch(() => {});
+      }
       const total = Number(p?.totalChunks) || 0;
       const current = Number(p?.currentChunk) || 0;
       if (!total) return;
@@ -555,8 +586,14 @@ export async function runLessonPreparePipeline({
           );
         } catch (retryErr) {
           console.warn('Vocabulary retry failed:', retryErr?.message);
+          if (localStubs.length) {
+            vocabulary = annotateVocab(localStubs, knownWords, learnedWords);
+          }
         }
       }
+    }
+    if (!vocabulary.length && localStubs.length) {
+      vocabulary = annotateVocab(localStubs, knownWords, learnedWords);
     }
     await patchLessonPrepare(supabase, userId, lessonId, {
       vocabulary_snapshot: vocabulary,
@@ -572,12 +609,15 @@ export async function runLessonPreparePipeline({
   const needQuiz = !Array.isArray(row.quiz_questions) || !row.quiz_questions.length;
 
   if (needHighlights || needQuiz) {
+    const tailStartedAtMs = Date.now();
     await patchLessonPrepare(supabase, userId, lessonId, {
       prepare_step: needHighlights ? PREPARE_STEPS.highlights : PREPARE_STEPS.quiz,
-      prepare_progress: null,
+      prepare_progress: formatChunkProgress(0, 1, tailStartedAtMs),
       summary_status: needHighlights ? SUMMARY_STATUS.pending : row.summary_status,
       summary_error: needHighlights ? null : row.summary_error,
     });
+    row.prepare_progress = formatChunkProgress(0, 1, tailStartedAtMs);
+    row.updated_at = new Date().toISOString();
   }
 
   const runHighlights = async () => {
@@ -585,11 +625,12 @@ export async function runLessonPreparePipeline({
     console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.highlights}`);
     try {
       const existingChapters = normalizeChapters(row.chapters);
-      const result = await summarize({
-        transcript: sampleTranscriptForAnalysis(
-          row.transcript_text || '',
-          SUMMARY_SAMPLE_CHARS
-        ),
+      const sampled = sampleTranscriptForAnalysis(
+        row.transcript_text || '',
+        SUMMARY_SAMPLE_CHARS
+      );
+      let result = await summarize({
+        transcript: sampled,
         title: row.title || '',
         durationSeconds: row.duration_seconds,
         existingChapters: existingChapters.length ? existingChapters : null,
@@ -597,7 +638,23 @@ export async function runLessonPreparePipeline({
         firstTimeout: HIGHLIGHTS_JOB_FIRST_MS,
         retryTimeout: HIGHLIGHTS_JOB_RETRY_MS,
       });
-      const summary = usableSummary(result?.summary, row.transcript_text);
+      let summary = usableSummary(result?.summary, row.transcript_text);
+      // Second shape: middle slice only (avoids greeting-heavy start dumps).
+      if (!summary && (row.transcript_text || '').length > 4000) {
+        const mid = String(row.transcript_text);
+        const start = Math.max(0, Math.floor(mid.length / 2) - 4000);
+        result = await summarize({
+          transcript: mid.slice(start, start + 8000),
+          title: row.title || '',
+          durationSeconds: row.duration_seconds,
+          existingChapters: existingChapters.length ? existingChapters : null,
+          needChapters: false,
+          firstTimeout: HIGHLIGHTS_JOB_RETRY_MS,
+          retryTimeout: HIGHLIGHTS_JOB_RETRY_MS,
+          allowRetry: false,
+        });
+        summary = usableSummary(result?.summary, row.transcript_text);
+      }
       const chapters = result?.chapters?.length
         ? normalizeChapters(result.chapters)
         : existingChapters;
@@ -609,12 +666,14 @@ export async function runLessonPreparePipeline({
           summary_error: null,
         });
         row.summary = summary;
+        row.summary_status = SUMMARY_STATUS.ready;
       } else {
         await patchLessonPrepare(supabase, userId, lessonId, {
           summary_status: SUMMARY_STATUS.failed,
           summary_error:
             'Could not generate highlights for this video. Try again in a moment.',
         });
+        row.summary_status = SUMMARY_STATUS.failed;
       }
     } catch (error) {
       const mapped = publicAiFailure(error);
@@ -622,6 +681,7 @@ export async function runLessonPreparePipeline({
         summary_status: SUMMARY_STATUS.failed,
         summary_error: mapped.message,
       });
+      row.summary_status = SUMMARY_STATUS.failed;
     }
   };
 
@@ -656,13 +716,17 @@ export async function runLessonPreparePipeline({
 
   await Promise.all([runHighlights(), runQuiz()]);
 
+  const vocabOk = hasVocabWords(row);
   await patchLessonPrepare(supabase, userId, lessonId, {
-    prepare_status: PREPARE_STATUS.ready,
-    prepare_step: PREPARE_STEPS.done,
-    prepare_error: null,
+    prepare_status: vocabOk ? PREPARE_STATUS.ready : PREPARE_STATUS.failed,
+    prepare_step: vocabOk ? PREPARE_STEPS.done : PREPARE_STEPS.vocab,
+    prepare_error: vocabOk
+      ? null
+      : 'Could not find vocabulary for this video. Try Re-extract.',
+    prepare_progress: null,
   });
-  console.log(`[learn-job] ${lessonId} ${PREPARE_STEPS.done}`);
-  return { ok: true, step: PREPARE_STEPS.done };
+  console.log(`[learn-job] ${lessonId} ${vocabOk ? PREPARE_STEPS.done : 'vocab-failed'}`);
+  return { ok: vocabOk, step: vocabOk ? PREPARE_STEPS.done : PREPARE_STEPS.vocab };
 }
 
 export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
@@ -685,11 +749,50 @@ export function enqueueLessonPrepare({ supabase, userId, lesson, run } = {}) {
   return true;
 }
 
-/** Restart a DB-pending job that is not running in this process (deploy/crash). */
+const RESUME_COOLDOWN_MS = 90 * 1000;
+const recentResumeAt = new Map();
+
+function stampResumeCooldown(lessonId, nowMs = Date.now()) {
+  const cutoff = nowMs - 2 * RESUME_COOLDOWN_MS;
+  for (const [id, at] of recentResumeAt) {
+    if (at < cutoff) recentResumeAt.delete(id);
+  }
+  recentResumeAt.set(lessonId, nowMs);
+}
+
+function lessonNeedsContentRepair(lesson) {
+  if (!hasTranscriptText(lesson)) return false;
+  if (!hasVocabWords(lesson)) return true;
+  if (
+    !usableSummary(lesson?.summary, lesson?.transcript_text || '') &&
+    lesson?.summary_status === SUMMARY_STATUS.failed
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Restart a DB-pending job, or repair ready lessons missing vocab/highlights. */
 export function resumeLessonPrepareIfNeeded({ supabase, userId, lesson, run } = {}) {
   if (!lesson?.id) return false;
-  if (lesson.prepare_status !== PREPARE_STATUS.pending) return false;
   if (isPrepareJobInFlight(lesson.id)) return false;
+
+  const pending = lesson.prepare_status === PREPARE_STATUS.pending;
+  const repair =
+    (lesson.prepare_status === PREPARE_STATUS.ready ||
+      lesson.prepare_status === PREPARE_STATUS.failed) &&
+    lessonNeedsContentRepair(lesson);
+
+  if (!pending && !repair) return false;
+
+  if (repair) {
+    const last = recentResumeAt.get(lesson.id) || 0;
+    if (Date.now() - last < RESUME_COOLDOWN_MS) return false;
+    const updated = Date.parse(lesson.updated_at || lesson.created_at || 0) || 0;
+    if (updated && Date.now() - updated < RESUME_COOLDOWN_MS) return false;
+  }
+
+  stampResumeCooldown(lesson.id);
   return enqueueLessonPrepare({ supabase, userId, lesson, run });
 }
 

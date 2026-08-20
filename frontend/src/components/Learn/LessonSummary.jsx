@@ -8,6 +8,7 @@ export default function LessonSummary({
   className = '',
   onGenerate,
   generating = false,
+  error = '',
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { text, items, source } = displaySummary(summary);
@@ -52,7 +53,8 @@ export default function LessonSummary({
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {generating
                 ? 'Generating bullet-point takeaways from the transcript…'
-                : 'No highlights yet for this video. Generate takeaways from the transcript, or study with the transcript and new words.'}
+                : error ||
+                  'No highlights yet for this video. Generate takeaways from the transcript, or study with the transcript and new words.'}
             </p>
           )}
           {canGenerate && (source === 'empty' || generating) ? (
@@ -67,7 +69,7 @@ export default function LessonSummary({
               ) : (
                 <Sparkles className="w-3.5 h-3.5" />
               )}
-              {generating ? 'Generating…' : 'Generate highlights'}
+              {generating ? 'Generating…' : error ? 'Try again' : 'Generate highlights'}
             </button>
           ) : null}
         </div>

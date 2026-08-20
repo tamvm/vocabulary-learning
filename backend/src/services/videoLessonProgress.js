@@ -138,7 +138,9 @@ export function hydrateLessonResponse(lesson) {
     prepareStep: lesson.prepare_step || null,
     prepareProgress: lesson.prepare_progress || '',
     prepareError: lesson.prepare_error || '',
-    vocabReady: lesson.vocabulary_snapshot != null,
+    vocabReady:
+      Array.isArray(lesson.vocabulary_snapshot) &&
+      lesson.vocabulary_snapshot.length > 0,
     prepareJob: buildPrepareJobView(lesson),
     userCefrLevel: lesson.user_cefr_level || 'B2',
     currentStep,
