@@ -332,6 +332,14 @@ export async function patchLessonPrepare(supabase, userId, lessonId, patch) {
   return error;
 }
 
+export function vocabPersistErrorMessage(error) {
+  const msg = String(error?.message || '');
+  if (/vocabulary_snapshot/i.test(msg) && /schema cache|Could not find/i.test(msg)) {
+    return 'Could not save vocabulary (database schema). Apply backend/sql/15_video_lessons_checkpoint.sql, reload the Supabase API schema, then Re-extract.';
+  }
+  return 'Could not save vocabulary for this video. Try Re-extract.';
+}
+
 async function defaultFetchTranscript(videoUrl) {
   const { youtubeTranscriptService } = await import('./youtubeTranscriptService.js');
   return youtubeTranscriptService.processYouTubeUrl(videoUrl, {
@@ -566,19 +574,22 @@ export async function runLessonPreparePipeline({
           : undefined,
     };
     const persistStubs = async (stubs) => {
-      if (!Array.isArray(stubs) || !stubs.length) return;
+      if (!Array.isArray(stubs) || !stubs.length) return null;
       if (!vocabSnapshotNeedsRerun(row)) {
-        return;
+        return null;
       }
       const tagged = annotateVocab(stubs, knownWords, learnedWords);
-      row.vocabulary_snapshot = tagged;
-      await patchLessonPrepare(supabase, userId, lessonId, {
+      const err = await patchLessonPrepare(supabase, userId, lessonId, {
         vocabulary_snapshot: tagged,
         user_cefr_level: row.user_cefr_level || 'B2',
         current_step: 2,
         status: 'analyzed',
         prepare_step: PREPARE_STEPS.vocab,
       });
+      if (!err) {
+        row.vocabulary_snapshot = tagged;
+      }
+      return err;
     };
     // Save local candidates immediately so Study can open before AI polish.
     if (localStubs.length) {
@@ -649,13 +660,22 @@ export async function runLessonPreparePipeline({
     if (!vocabulary.length && localStubs.length) {
       vocabulary = annotateVocab(localStubs, knownWords, learnedWords);
     }
-    await patchLessonPrepare(supabase, userId, lessonId, {
+    const vocabPatchErr = await patchLessonPrepare(supabase, userId, lessonId, {
       vocabulary_snapshot: vocabulary,
       user_cefr_level: row.user_cefr_level || 'B2',
       current_step: 2,
       status: 'analyzed',
       prepare_progress: formatChunkProgress(1, 1, vocabStartedAtMs),
     });
+    if (vocabPatchErr) {
+      return fail(PREPARE_STEPS.vocab, vocabPersistErrorMessage(vocabPatchErr));
+    }
+    if (!vocabulary.length) {
+      return fail(
+        PREPARE_STEPS.vocab,
+        'Could not find vocabulary for this video. Try Re-extract.'
+      );
+    }
     row.vocabulary_snapshot = vocabulary;
   }
 

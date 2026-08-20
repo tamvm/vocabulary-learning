@@ -20,6 +20,7 @@ import {
   runLessonPreparePipeline,
   buildPrepareJobView,
   patchLessonPrepare,
+  vocabPersistErrorMessage,
   VOCAB_SAMPLE_CHARS,
 } from './src/services/lessonPrepareJob.js';
 
@@ -510,6 +511,86 @@ assert(updateCalls === 2, 'retries patch without the missing column only');
 assert(
   progressPatches.some((p) => p.prepare_step === PREPARE_STEPS.vocab && !('prepare_progress' in p)),
   'still writes prepare_step when prepare_progress column is missing'
+);
+
+assert(
+  /15_video_lessons_checkpoint\.sql/i.test(
+    vocabPersistErrorMessage({
+      message:
+        "Could not find the 'vocabulary_snapshot' column of 'video_lessons' in the schema cache",
+    })
+  ),
+  'schema-cache persist error names the checkpoint SQL'
+);
+
+const schemaPatches = [];
+const schemaFailSupabase = {
+  from() {
+    return {
+      select() {
+        return {
+          eq() {
+            return {
+              eq() {
+                return Promise.resolve({ data: [], error: null });
+              },
+            };
+          },
+        };
+      },
+      update(patch) {
+        schemaPatches.push({ ...patch });
+        return {
+          eq() {
+            return {
+              eq() {
+                if (Object.prototype.hasOwnProperty.call(patch, 'vocabulary_snapshot')) {
+                  return Promise.resolve({
+                    error: {
+                      message:
+                        "Could not find the 'vocabulary_snapshot' column of 'video_lessons' in the schema cache",
+                    },
+                  });
+                }
+                return Promise.resolve({ error: null });
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+};
+const schemaFailResult = await runLessonPreparePipeline({
+  supabase: schemaFailSupabase,
+  userId: 'user-1',
+  lesson: {
+    id: 'lesson-schema',
+    video_url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    user_cefr_level: 'B2',
+    transcript_text: 'The payload to orbit needs a heat shield ablation for Mars. '.repeat(4),
+    transcript_cues: [{ start: 0, end: 1, text: 'payload to orbit' }],
+  },
+  fetchTranscript: async () => ({ success: false, error: 'should not fetch' }),
+  analyzeVocab: async () => ({ vocabulary: [{ word: 'payload', definition: 'cargo' }] }),
+  summarize: async () => {
+    throw new Error('highlights must not run after vocab persist failure');
+  },
+  generateQuiz: async () => {
+    throw new Error('quiz must not run after vocab persist failure');
+  },
+});
+assert(schemaFailResult.ok === false, 'schema-cache vocab persist fails the job');
+assert(schemaFailResult.step === PREPARE_STEPS.vocab, 'stays on vocab when snapshot cannot save');
+assert(
+  schemaPatches.some(
+    (p) => p.prepare_status === PREPARE_STATUS.failed && p.prepare_step === PREPARE_STEPS.vocab
+  ),
+  'marks prepare failed instead of ready when snapshot cannot save'
+);
+assert(
+  !schemaPatches.some((p) => p.prepare_status === PREPARE_STATUS.ready),
+  'does not mark ready after vocabulary_snapshot patch failure'
 );
 
 console.log('test_lesson_prepare_job: OK');

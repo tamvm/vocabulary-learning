@@ -145,8 +145,8 @@ assertEqual(
     summary: '',
     lesson: { videoUrl: 'https://youtu.be/abcdefghijk' },
   }),
-  false,
-  'does not reanalyze when cues exist'
+  true,
+  'reanalyzes when cues exist but vocabulary is empty'
 );
 assertEqual(
   lessonNeedsReanalyze({
