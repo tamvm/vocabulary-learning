@@ -7,6 +7,19 @@ const PREPARE_STEP_LABELS = {
   quiz: 'Quiz',
 };
 
+export function formatStepEta(etaSeconds) {
+  const seconds = Number(etaSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  if (seconds < 60) return `~${Math.ceil(seconds)}s`;
+  return `~${Math.ceil(seconds / 60)} min`;
+}
+
+export function chunkPercent(progress) {
+  const match = String(progress || '').match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match || !Number(match[2])) return 0;
+  return Math.min(99, Math.round((Number(match[1]) / Number(match[2])) * 100));
+}
+
 export function prepareStepLabel(step, progress = '') {
   if (step === 'transcript') return 'Fetching transcript…';
   if (step === 'vocab') {
@@ -40,7 +53,10 @@ export function prepareStepOf(lesson) {
 }
 
 export function prepareProgressOf(lesson) {
-  return lesson?.prepare_progress || lesson?.prepareProgress || '';
+  return String(lesson?.prepare_progress || lesson?.prepareProgress || '').replace(
+    /@\d+$/,
+    ''
+  );
 }
 
 export function isPreparingLesson(lesson) {
@@ -49,7 +65,10 @@ export function isPreparingLesson(lesson) {
 
 /** Vocabulary snapshot exists; highlights/quiz may still be running. */
 export function isVocabReady(lesson) {
+  if (lesson?.vocabReady === false) return false;
   if (lesson?.vocabReady === true) return true;
+  if (Array.isArray(lesson?.vocabulary) && lesson.vocabulary.length > 0) return true;
+  if (Array.isArray(lesson?.vocabulary_snapshot)) return true;
   if (prepareStatusOf(lesson) === 'ready') return true;
   const step = prepareStepOf(lesson);
   return step === 'highlights' || step === 'quiz' || step === 'done';
@@ -69,19 +88,31 @@ export function prepareJobFromLesson(lesson) {
   const progress = prepareProgressOf(lesson);
   const steps = PREPARE_STEP_ORDER.map((id, index) => {
     let state = 'queued';
-    if (status === 'ready' && id !== 'quiz') state = 'done';
-    else if (id === 'transcript' && (currentIndex > 0 || vocabReady)) state = 'done';
-    else if (id === 'vocab' && vocabReady) state = 'done';
+    if (id === 'transcript' && (currentIndex > 0 || vocabReady || status === 'ready')) {
+      state = 'done';
+    } else if (id === 'vocab' && vocabReady) state = 'done';
     else if (status === 'failed' && id === current) state = 'failed';
     else if (status === 'pending' && id === current) state = 'running';
-    else if (status === 'pending' && currentIndex >= 0 && index < currentIndex) {
-      state = 'done';
-    } else if (status === 'ready' && id === 'quiz') state = 'done';
+    else if (
+      status === 'pending' &&
+      (current === 'highlights' || current === 'quiz') &&
+      (id === 'highlights' || id === 'quiz')
+    ) {
+      state = 'running';
+    } else if (status === 'pending' && currentIndex >= 0 && index < currentIndex) {
+      state = id === 'vocab' && !vocabReady ? 'queued' : 'done';
+    } else if (status === 'ready') state = 'done';
+    const stepProgress = id === 'vocab' && state === 'running' ? progress : '';
+    const percent =
+      state === 'done' ? 100 : state === 'running' ? chunkPercent(stepProgress) || 15 : 0;
     return {
       id,
       label: PREPARE_STEP_LABELS[id],
       state,
-      progress: id === 'vocab' && state === 'running' ? progress : '',
+      progress: stepProgress,
+      percent,
+      etaSeconds: null,
+      etaLabel: '',
     };
   });
   return { status, step: current, error: lesson?.prepare_error || '', steps };

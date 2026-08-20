@@ -86,6 +86,17 @@ export function asAnswerMap(value) {
   return mapped;
 }
 
+export function summarizeHistoryLesson(row) {
+  if (!row) return row;
+  const step = row.prepare_step;
+  const vocabReady =
+    row.prepare_status === 'ready' ||
+    step === 'highlights' ||
+    step === 'quiz' ||
+    step === 'done';
+  return { ...row, vocabReady };
+}
+
 export function hydrateLessonResponse(lesson) {
   const vocabulary = asArray(lesson.vocabulary_snapshot);
   const studyWords = asArray(lesson.study_words_snapshot);

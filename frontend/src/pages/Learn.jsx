@@ -52,6 +52,7 @@ function StepVocab({
   onGenerateHighlights,
   highlightsLoading = false,
   saving,
+  preparingVocab = false,
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [detailIdx, setDetailIdx] = useState(null);
@@ -63,6 +64,17 @@ function StepVocab({
     });
     return set;
   });
+
+  useEffect(() => {
+    setSelectedIndices((prev) => {
+      if (prev.size > 0) return prev;
+      const next = new Set();
+      vocabulary.forEach((item, idx) => {
+        if (!item.isKnown && !item.isLearned) next.add(idx);
+      });
+      return next.size ? next : prev;
+    });
+  }, [vocabulary]);
 
   const toggleWord = (idx) => {
     setSelectedIndices((prev) => {
@@ -286,8 +298,9 @@ function StepVocab({
 
         {vocabulary.length === 0 && (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            No word list from this transcript yet. Continue to Study and tap any
-            word to look it up and add it.
+            {preparingVocab
+              ? 'Finding vocabulary from this transcript… You can open Study as soon as words appear.'
+              : 'No word list from this transcript yet. Continue to Study and tap any word to look it up and add it.'}
           </div>
         )}
       </div>
@@ -813,10 +826,11 @@ export default function Learn() {
     if (!lessonId) return;
     if (step !== STEPS.VOCAB && step !== STEPS.STUDY) return;
     if (displaySummary(summary).source !== 'empty') return;
+    if (prepareJob?.status === 'pending') return;
     if (highlightsAttemptedRef.current.has(lessonId)) return;
     highlightsAttemptedRef.current.add(lessonId);
     generateHighlights({ auto: true });
-  }, [lessonId, step, summary, generateHighlights]);
+  }, [lessonId, step, summary, generateHighlights, prepareJob?.status]);
 
   useEffect(() => {
     if (!lessonId) return;
@@ -826,13 +840,27 @@ export default function Learn() {
       try {
         const poll = await youtubeAPI.getLesson(lessonId);
         if (cancelled) return;
-        if (poll.data?.prepareJob) setPrepareJob(poll.data.prepareJob);
-        if (poll.data?.summary) setSummary(poll.data.summary);
-        if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
-          setChapters(poll.data.chapters);
+        const data = poll.data || {};
+        if (data.prepareJob) setPrepareJob(data.prepareJob);
+        if (data.prepareStep) setPrepareStep(data.prepareStep);
+        if (data.summary) setSummary(data.summary);
+        if (Array.isArray(data.chapters) && data.chapters.length) {
+          setChapters(data.chapters);
         }
-        if (Array.isArray(poll.data?.questions) && poll.data.questions.length) {
-          setQuestions(poll.data.questions);
+        if (Array.isArray(data.questions) && data.questions.length) {
+          setQuestions(data.questions);
+        }
+        if (Array.isArray(data.cues) && data.cues.length) {
+          setCues(data.cues);
+        }
+        if (data.videoInfo?.title || data.videoInfo?.thumbnail) {
+          setVideoInfo((prev) => ({ ...prev, ...data.videoInfo }));
+        }
+        if (Array.isArray(data.vocabulary) && data.vocabulary.length) {
+          setVocabulary(data.vocabulary);
+          setStudyWords((prev) =>
+            prev.length ? prev : data.vocabulary.filter((item) => !item?.isKnown)
+          );
         }
       } catch (err) {
         console.warn('Prepare job poll failed:', err);
@@ -1024,6 +1052,11 @@ export default function Learn() {
       setUserCefrLevel(kicked.userCefrLevel);
       setPrepareJob(kicked.prepareJob || null);
       setPrepareStep(kicked.prepareStep || 'transcript');
+      setVocabulary([]);
+      setCues([]);
+      setSummary('');
+      setChapters([]);
+      setQuestions([]);
       setHistory((prev) =>
         upsertHistoryLesson(prev, {
           id: nextLessonId,
@@ -1035,11 +1068,12 @@ export default function Learn() {
           current_step: STEPS.VOCAB,
           prepare_status: 'pending',
           prepare_step: kicked.prepareStep || 'transcript',
+          vocabReady: false,
           updated_at: new Date().toISOString(),
         })
       );
-      setStep(STEPS.URL);
-      setSearchParams({}, { replace: true });
+      setStep(STEPS.VOCAB);
+      setSearchParams({ lesson: nextLessonId }, { replace: true });
       toast('Video added — fetching transcript and vocabulary in the background', { icon: 'ℹ️' });
       loadHistory({ silent: true });
     } catch (err) {
@@ -1048,7 +1082,6 @@ export default function Learn() {
       toast.error(msg);
     } finally {
       setLoading(false);
-      setPrepareStep(null);
     }
   }, [loadHistory, setSearchParams]);
 
@@ -1067,8 +1100,12 @@ export default function Learn() {
         setVideoInfo(data.videoInfo);
         setPrepareJob(data.prepareJob || null);
         setPrepareStep(data.prepareStep || 'transcript');
-        setSearchParams({}, { replace: true });
-        setStep(STEPS.URL);
+        setCues(Array.isArray(data.cues) ? data.cues : []);
+        setSummary(data.summary || '');
+        setChapters(Array.isArray(data.chapters) ? data.chapters : []);
+        setVocabulary(data.vocabulary || []);
+        setSearchParams({ lesson: id }, { replace: true });
+        setStep(STEPS.VOCAB);
         setHistory((prev) =>
           upsertHistoryLesson(prev, {
             id,
@@ -1081,10 +1118,11 @@ export default function Learn() {
             prepare_status: 'pending',
             prepare_step: data.prepareStep,
             prepare_progress: data.prepareProgress,
+            vocabReady: false,
             updated_at: data.lesson?.updatedAt || new Date().toISOString(),
           })
         );
-        toast('Still preparing — you can open it as soon as vocabulary is ready', { icon: 'ℹ️' });
+        toast('Still preparing vocabulary — you can study as soon as words appear', { icon: 'ℹ️' });
         loadHistory({ silent: true });
         return;
       }
@@ -1540,6 +1578,7 @@ export default function Learn() {
             onGenerateHighlights={() => generateHighlights({ auto: false })}
             highlightsLoading={highlightsLoading}
             saving={saving}
+            preparingVocab={prepareJob?.status === 'pending' && !vocabulary.length}
           />
         )}
 

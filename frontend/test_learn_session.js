@@ -188,6 +188,22 @@ const vocabReadyPending = {
 };
 assertEqual(isVocabReady(vocabReadyPending), true, 'highlights step means vocab is ready');
 assertEqual(statusTone(vocabReadyPending).label, 'Vocab ready', 'can open vocab while job continues');
+assertEqual(
+  isVocabReady({ ...vocabReadyPending, vocabReady: false }),
+  false,
+  'explicit vocabReady false wins over later prepare steps'
+);
+
+const leftoverQuizJob = prepareJobFromLesson({
+  prepare_status: 'pending',
+  prepare_step: 'highlights',
+  vocabReady: false,
+});
+assertEqual(
+  leftoverQuizJob.steps[1].state,
+  'queued',
+  'frontend job view does not mark vocab done just because later steps started'
+);
 
 const listed = upsertHistoryLesson([unfinished], preparing);
 assertEqual(listed[0].id, 'p', 'pending lesson is prepended to Your videos');

@@ -13,6 +13,7 @@ import {
   isUnfinishedLesson,
   pickLessonToReuse,
   pickProgressFields,
+  summarizeHistoryLesson,
 } from './src/services/videoLessonProgress.js';
 
 let failed = 0;
@@ -119,6 +120,23 @@ assertEqual(hydrated.prepareStatus, 'idle', 'hydrate default prepareStatus');
 assertEqual(hydrated.vocabReady, true, 'hydrate vocabReady when snapshot exists');
 assertEqual(hydrated.prepareProgress, '', 'hydrate default prepareProgress');
 assertEqual(hydrated.prepareJob.steps.length, 4, 'hydrate prepareJob has four steps');
+
+const summarized = summarizeHistoryLesson({
+  id: 'h1',
+  title: 'Talk',
+  prepare_status: 'pending',
+  prepare_step: 'highlights',
+});
+assertEqual(summarized.vocabReady, true, 'history row exposes vocabReady from prepare_step');
+assertEqual(
+  summarizeHistoryLesson({
+    id: 'h2',
+    prepare_status: 'pending',
+    prepare_step: 'vocab',
+  }).vocabReady,
+  false,
+  'history row keeps vocab not-ready while still on vocab step'
+);
 
 const dumpHydrated = hydrateLessonResponse({
   ...lesson,
