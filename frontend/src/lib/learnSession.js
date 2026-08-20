@@ -68,7 +68,9 @@ export function isVocabReady(lesson) {
   if (lesson?.vocabReady === false) return false;
   if (lesson?.vocabReady === true) return true;
   if (Array.isArray(lesson?.vocabulary) && lesson.vocabulary.length > 0) return true;
-  if (Array.isArray(lesson?.vocabulary_snapshot)) return true;
+  if (Array.isArray(lesson?.vocabulary_snapshot) && lesson.vocabulary_snapshot.length > 0) {
+    return true;
+  }
   if (prepareStatusOf(lesson) === 'ready') return true;
   const step = prepareStepOf(lesson);
   return step === 'highlights' || step === 'quiz' || step === 'done';

@@ -67,17 +67,36 @@ assert(
 const runningJob = buildPrepareJobView({
   prepare_status: 'pending',
   prepare_step: 'vocab',
-  prepare_progress: `2/3@${Math.floor((Date.now() - 40000) / 1000)}`,
+  prepare_progress: `0/1@${Math.floor((Date.now() - 20000) / 1000)}`,
   transcript_text: 'A'.repeat(80),
   updated_at: new Date().toISOString(),
 });
 assert(runningJob.steps[0].state === 'done', 'transcript done when text exists');
 assert(runningJob.steps[1].state === 'running', 'vocab running');
-assert(runningJob.steps[1].progress === '2/3', 'vocab progress hides start stamp');
-assert(runningJob.steps[1].percent === 67, 'vocab percent from chunks');
-assert(runningJob.steps[1].etaSeconds >= 5, 'vocab ETA uses step start stamp');
+assert(runningJob.steps[1].progress === '0/1', 'vocab progress hides start stamp');
+assert(runningJob.steps[1].percent >= 40, 'vocab percent moves with wall time on 0/1');
+assert(runningJob.steps[1].etaSeconds < 40, 'vocab ETA counts down below full budget');
+assert(runningJob.steps[1].etaSeconds >= 5, 'vocab ETA has a floor');
 assert(runningJob.steps[2].state === 'queued', 'highlights queued');
 assert(runningJob.steps[3].id === 'quiz', 'quiz listed');
+
+const laterJob = buildPrepareJobView(
+  {
+    prepare_status: 'pending',
+    prepare_step: 'highlights',
+    prepare_progress: `0/1@${Math.floor((Date.now() - 30000) / 1000)}`,
+    transcript_text: 'A'.repeat(80),
+    vocabulary_snapshot: [{ word: 'orbit' }],
+    updated_at: new Date(Date.now() - 30000).toISOString(),
+  },
+  Date.now()
+);
+assert(laterJob.steps[2].state === 'running', 'highlights running');
+assert(laterJob.steps[2].percent > 20, 'highlights percent rises with elapsed');
+assert(
+  laterJob.steps[2].etaSeconds < Math.ceil(75000 / 1000),
+  'highlights ETA is not a stuck full-budget constant'
+);
 
 const leftoverQuiz = buildPrepareJobView({
   prepare_status: 'pending',
@@ -88,6 +107,15 @@ const leftoverQuiz = buildPrepareJobView({
 });
 assert(leftoverQuiz.steps[1].state === 'queued', 'vocab not done from leftover quiz');
 assert(leftoverQuiz.steps[3].state === 'queued', 'quiz leftover hidden until vocab exists');
+
+const emptyVocabJob = buildPrepareJobView({
+  prepare_status: 'ready',
+  prepare_step: 'done',
+  transcript_text: 'A'.repeat(80),
+  vocabulary_snapshot: [],
+  updated_at: new Date().toISOString(),
+});
+assert(emptyVocabJob.steps[1].state === 'queued', 'empty vocab array is not vocab-done');
 
 const steps = [];
 const patches = [];
@@ -231,9 +259,10 @@ const retryResult = await runLessonPreparePipeline({
   },
   fetchTranscript: async () => ({
     success: true,
-    content: 'A'.repeat(200),
+    // Function-word-only transcript → no local candidates, forces AI recall path.
+    content: 'The a an of to and or but if so as at by for from in on.',
     title: 'Talk',
-    cues: [{ start: 0, end: 1, text: 'hi' }],
+    cues: [{ start: 0, end: 1, text: 'the a an of to' }],
     chapters: [],
     videoInfo: { duration: 60, thumbnail: null },
     provider: 'transcript24',
@@ -343,6 +372,21 @@ assert(
     run: () => {},
   }) === true,
   'resumes pending jobs that are not in-flight'
+);
+
+resetPrepareJobsForTests();
+assert(
+  resumeLessonPrepareIfNeeded({
+    lesson: {
+      id: 'empty-vocab-ready',
+      prepare_status: 'ready',
+      transcript_text: 'A'.repeat(200),
+      vocabulary_snapshot: [],
+      updated_at: new Date(Date.now() - 120000).toISOString(),
+    },
+    run: () => {},
+  }) === true,
+  'repairs ready lessons that have an empty vocabulary snapshot'
 );
 
 console.log('test_lesson_prepare_job: OK');

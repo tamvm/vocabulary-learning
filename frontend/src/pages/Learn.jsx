@@ -45,6 +45,7 @@ function StepVocab({
   vocabulary,
   userCefrLevel,
   summary = '',
+  summaryError = '',
   onLearn,
   onSkip,
   onToggleKnown,
@@ -170,6 +171,7 @@ function StepVocab({
         className="mb-6"
         onGenerate={onGenerateHighlights}
         generating={highlightsLoading}
+        error={summaryError}
       />
 
       {/* Stats bar */}
@@ -743,6 +745,7 @@ export default function Learn() {
   const [currentVideoUrl, setCurrentVideoUrl] = useState('');
   const [cues, setCues] = useState([]);
   const [summary, setSummary] = useState('');
+  const [summaryError, setSummaryError] = useState('');
   const [chapters, setChapters] = useState([]);
   const [studyWords, setStudyWords] = useState([]);
 
@@ -770,12 +773,14 @@ export default function Learn() {
     highlightsPollGenRef.current = pollGen;
     setHighlightsLoading(true);
     setError(null);
+    setSummaryError('');
     try {
       const response = await youtubeAPI.generateHighlights(lessonId);
       if (highlightsPollGenRef.current !== pollGen) return;
       const nextSummary = response.data?.summary || '';
       if (nextSummary) {
         setSummary(nextSummary);
+        setSummaryError('');
         if (Array.isArray(response.data?.chapters) && response.data.chapters.length) {
           setChapters(response.data.chapters);
         }
@@ -793,6 +798,7 @@ export default function Learn() {
         const polledSummary = poll.data?.summary || '';
         if (polledSummary) {
           setSummary(polledSummary);
+          setSummaryError('');
           if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
             setChapters(poll.data.chapters);
           }
@@ -803,6 +809,7 @@ export default function Learn() {
           const failMsg =
             poll.data?.summaryError ||
             'Could not generate highlights for this video';
+          setSummaryError(failMsg);
           setError(failMsg);
           toast.error(failMsg);
           return;
@@ -812,6 +819,7 @@ export default function Learn() {
     } catch (err) {
       if (highlightsPollGenRef.current !== pollGen) return;
       const msg = apiErrorMessage(err, 'Could not start highlights');
+      setSummaryError(msg);
       setError(msg);
       toast.error(msg);
     } finally {
@@ -844,6 +852,11 @@ export default function Learn() {
         if (data.prepareJob) setPrepareJob(data.prepareJob);
         if (data.prepareStep) setPrepareStep(data.prepareStep);
         if (data.summary) setSummary(data.summary);
+        if (data.summaryStatus === 'failed' && data.summaryError) {
+          setSummaryError(data.summaryError);
+        } else if (data.summary) {
+          setSummaryError('');
+        }
         if (Array.isArray(data.chapters) && data.chapters.length) {
           setChapters(data.chapters);
         }
@@ -1020,6 +1033,11 @@ export default function Learn() {
     setCurrentVideoUrl(data.lesson?.videoUrl || '');
     setCues(Array.isArray(data.cues) ? data.cues : []);
     setSummary(data.summary || '');
+    setSummaryError(
+      data.summaryStatus === 'failed'
+        ? data.summaryError || 'Could not generate highlights for this video'
+        : ''
+    );
     setChapters(Array.isArray(data.chapters) ? data.chapters : []);
     setStudyWords(data.studyWords || []);
     setQuestions(data.questions || []);
@@ -1055,6 +1073,7 @@ export default function Learn() {
       setVocabulary([]);
       setCues([]);
       setSummary('');
+      setSummaryError('');
       setChapters([]);
       setQuestions([]);
       setHistory((prev) =>
@@ -1102,6 +1121,11 @@ export default function Learn() {
         setPrepareStep(data.prepareStep || 'transcript');
         setCues(Array.isArray(data.cues) ? data.cues : []);
         setSummary(data.summary || '');
+        setSummaryError(
+          data.summaryStatus === 'failed'
+            ? data.summaryError || 'Could not generate highlights for this video'
+            : ''
+        );
         setChapters(Array.isArray(data.chapters) ? data.chapters : []);
         setVocabulary(data.vocabulary || []);
         setSearchParams({ lesson: id }, { replace: true });
@@ -1416,6 +1440,7 @@ export default function Learn() {
     setLessonId(null);
     setCues([]);
     setSummary('');
+    setSummaryError('');
     setChapters([]);
     setStudyWords([]);
     setSearchParams({}, { replace: true });
@@ -1571,6 +1596,7 @@ export default function Learn() {
             vocabulary={vocabulary}
             userCefrLevel={userCefrLevel}
             summary={summary}
+            summaryError={summaryError}
             onLearn={handleLearn}
             onSkip={handleSkipToStudy}
             onToggleKnown={handleToggleKnown}
