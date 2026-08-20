@@ -127,10 +127,15 @@ const PHRASAL_BY_LENGTH = [...PHRASAL_LIST]
 export function lemmaFromToken(raw) {
   let w = String(raw || '')
     .toLowerCase()
-    .replace(/[^a-z'-]/g, '')
-    .replace(/'/g, '');
+    .replace(/[^a-z'-]/g, '');
+  if (!w) return '';
+  // Drop n't entirely so won't≠win (won→win). Remaining bases are function words.
+  w = w.replace(/n't$/, '').replace(/'(?:s|re|ve|ll|d)$/, '');
+  w = w.replace(/'/g, '');
   if (!w) return '';
   if (IRREGULAR[w]) return IRREGULAR[w];
+  // Prefer known CEFR lemmas as-is (always, news) so we don't invent alway/new.
+  if (LEMMA_LEVEL.has(w)) return w;
   if (w.endsWith('ies') && w.length > 4) return `${w.slice(0, -3)}y`;
   if (w.endsWith('ing') && w.length > 5) {
     const stem = w.slice(0, -3);
@@ -142,7 +147,10 @@ export function lemmaFromToken(raw) {
     if (stem.endsWith('i')) return `${stem.slice(0, -1)}y`;
     return stem;
   }
-  if (w.endsWith('es') && w.length > 4) return w.slice(0, -2);
+  // Only strip -es after sibilants (boxes, watches, classes) — not bubbles → bubbl.
+  if (w.length > 4 && /(?:[sxz]|ch|sh)es$/.test(w)) {
+    return w.replace(/es$/, '');
+  }
   if (w.endsWith('s') && w.length > 3 && !w.endsWith('ss')) return w.slice(0, -1);
   return w;
 }
