@@ -72,11 +72,7 @@ export function recoverLessonSummaryFromAiText(content) {
 
   const summaryKey = cleaned.match(/"summary"\s*:\s*"((?:\\.|[^"\\])*)"?/);
   if (summaryKey?.[1]) {
-    const unescaped = summaryKey[1]
-      .replace(/\\n/g, '\n')
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, '\\');
-    const normalized = normalizeLessonSummary(unescaped);
+    const normalized = normalizeLessonSummary(unescapeJsonStringFragment(summaryKey[1]));
     if (normalized) return normalized;
   }
 
@@ -99,6 +95,25 @@ function stripAiJsonFences(content) {
     .replace(/```json\s*/gi, '')
     .replace(/```/g, '')
     .trim();
+}
+
+/** Unescape a JSON string fragment left-to-right so `\\n` stays backslash+n. */
+export function unescapeJsonStringFragment(raw) {
+  const text = String(raw || '');
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== '\\' || i + 1 >= text.length) {
+      out += text[i];
+      continue;
+    }
+    const next = text[i + 1];
+    i += 1;
+    if (next === 'n') out += '\n';
+    else if (next === '"') out += '"';
+    else if (next === '\\') out += '\\';
+    else out += next;
+  }
+  return out;
 }
 
 export function parseAiJsonObject(content) {

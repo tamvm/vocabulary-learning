@@ -9,6 +9,7 @@ import {
   parseAiJsonArray,
   parseAiJsonObject,
   recoverLessonSummaryFromAiText,
+  unescapeJsonStringFragment,
 } from './src/services/lessonSummaryNormalize.js';
 
 function assert(cond, msg) {
@@ -69,6 +70,10 @@ assert(
   truncatedJson.includes('Tesla is scaling factory output'),
   'recovers truncated JSON summary'
 );
+
+assert(unescapeJsonStringFragment('a\\nb') === 'a\nb', 'unescapes JSON newline');
+assert(unescapeJsonStringFragment('a\\\\nb') === 'a\\nb', 'keeps literal backslash-n');
+assert(unescapeJsonStringFragment('say \\"hi\\"') === 'say "hi"', 'unescapes JSON quotes');
 
 const markdown = recoverLessonSummaryFromAiText(`Here are the takeaways:
 - Tesla is scaling factory output this year
