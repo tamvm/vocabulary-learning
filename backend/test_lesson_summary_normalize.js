@@ -8,6 +8,7 @@ import {
   normalizeLessonSummary,
   parseAiJsonArray,
   parseAiJsonObject,
+  recoverLessonSummaryFromAiText,
 } from './src/services/lessonSummaryNormalize.js';
 
 function assert(cond, msg) {
@@ -61,7 +62,21 @@ assert(
   extractLessonSummaryRaw({ summary: '- A\n- B' }) === '- A\n- B',
   'extracts summary string'
 );
-assert(extractLessonSummaryRaw({}) === '', 'empty parsed object');
+const truncatedJson = recoverLessonSummaryFromAiText(
+  '{"summary": "- Tesla is scaling factory output\\n- Optimus is a humanoid robot\\n- SpaceX is aiming at Mars'
+);
+assert(
+  truncatedJson.includes('Tesla is scaling factory output'),
+  'recovers truncated JSON summary'
+);
+
+const markdown = recoverLessonSummaryFromAiText(`Here are the takeaways:
+- Tesla is scaling factory output this year
+- Optimus is a humanoid robot platform
+- SpaceX is aiming at Mars colonization
+Thanks!`);
+assert(markdown.includes('Tesla is scaling factory output'), 'recovers markdown bullets');
+assert(markdown.split('\n').length >= 3, 'markdown recovery keeps multiple bullets');
 
 const vocabArr = parseAiJsonArray('```json\n[{"word":"orbit"}]\n```');
 assert(vocabArr[0].word === 'orbit', 'strips fences on array');

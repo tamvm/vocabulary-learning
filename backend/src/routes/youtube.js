@@ -638,21 +638,16 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
       });
     }
 
-    if (status === SUMMARY_STATUS.pending) {
-      return res.status(202).json({
-        success: true,
-        lessonId,
-        status: SUMMARY_STATUS.pending,
-        summary: existingSummary || '',
-        chapters: existingChapters,
+    // Pending + in-flight: do not reset timestamps; still enqueue so a hung
+    // job queues a rerun. Pending + not in-flight: kick a dead worker.
+    const inFlight = isPrepareJobInFlight(lessonId);
+    if (!(status === SUMMARY_STATUS.pending && inFlight)) {
+      await patchLessonPrepare(req.supabase, req.user.id, lessonId, {
+        summary_status: SUMMARY_STATUS.pending,
+        summary_error: null,
+        prepare_status: PREPARE_STATUS.pending,
       });
     }
-
-    await patchLessonPrepare(req.supabase, req.user.id, lessonId, {
-      summary_status: SUMMARY_STATUS.pending,
-      summary_error: null,
-      prepare_status: PREPARE_STATUS.pending,
-    });
     enqueueLessonPrepare({
       supabase: req.supabase,
       userId: req.user.id,
@@ -663,7 +658,7 @@ router.post('/lessons/:id/highlights', async (req, res, next) => {
       success: true,
       lessonId,
       status: SUMMARY_STATUS.pending,
-      summary: '',
+      summary: existingSummary || '',
       chapters: existingChapters,
     });
   } catch (error) {
