@@ -26,6 +26,7 @@ import {
   upsertHistoryLesson,
   isPreparingLesson,
   isVocabReady,
+  isHighlightsGenerating,
 } from '@/lib/learnSession';
 import { displaySummary } from '@/lib/lessonSummary';
 import { apiErrorMessage } from '@/lib/aiErrors';
@@ -52,6 +53,7 @@ function StepVocab({
   onBack,
   onGenerateHighlights,
   highlightsLoading = false,
+  highlightsGenerating = false,
   saving,
   preparingVocab = false,
 }) {
@@ -170,7 +172,8 @@ function StepVocab({
         defaultOpen
         className="mb-6"
         onGenerate={onGenerateHighlights}
-        generating={highlightsLoading}
+        generating={highlightsGenerating || highlightsLoading}
+        busy={highlightsLoading}
         error={summaryError}
       />
 
@@ -746,6 +749,7 @@ export default function Learn() {
   const [cues, setCues] = useState([]);
   const [summary, setSummary] = useState('');
   const [summaryError, setSummaryError] = useState('');
+  const [summaryStatus, setSummaryStatus] = useState('');
   const [chapters, setChapters] = useState([]);
   const [studyWords, setStudyWords] = useState([]);
 
@@ -774,13 +778,16 @@ export default function Learn() {
     setHighlightsLoading(true);
     setError(null);
     setSummaryError('');
+    setSummaryStatus('pending');
     try {
       const response = await youtubeAPI.generateHighlights(lessonId);
       if (highlightsPollGenRef.current !== pollGen) return;
       const nextSummary = response.data?.summary || '';
+      if (response.data?.status) setSummaryStatus(response.data.status);
       if (nextSummary) {
         setSummary(nextSummary);
         setSummaryError('');
+        setSummaryStatus('ready');
         if (Array.isArray(response.data?.chapters) && response.data.chapters.length) {
           setChapters(response.data.chapters);
         }
@@ -788,17 +795,19 @@ export default function Learn() {
         return;
       }
 
-      const deadline = Date.now() + 180000;
+      const deadline = Date.now() + 240000;
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         if (highlightsPollGenRef.current !== pollGen) return;
         const poll = await youtubeAPI.getLesson(lessonId);
         if (highlightsPollGenRef.current !== pollGen) return;
         setPrepareJob(poll.data?.prepareJob || null);
+        if (poll.data?.summaryStatus) setSummaryStatus(poll.data.summaryStatus);
         const polledSummary = poll.data?.summary || '';
         if (polledSummary) {
           setSummary(polledSummary);
           setSummaryError('');
+          setSummaryStatus('ready');
           if (Array.isArray(poll.data?.chapters) && poll.data.chapters.length) {
             setChapters(poll.data.chapters);
           }
@@ -810,16 +819,20 @@ export default function Learn() {
             poll.data?.summaryError ||
             'Could not generate highlights for this video';
           setSummaryError(failMsg);
+          setSummaryStatus('failed');
           setError(failMsg);
           toast.error(failMsg);
           return;
         }
       }
-      toast.error('Highlights are still generating. Open this session again in a moment.');
+      const stillMsg = 'Highlights are still generating. Try again in a moment.';
+      setSummaryError(stillMsg);
+      toast.error(stillMsg);
     } catch (err) {
       if (highlightsPollGenRef.current !== pollGen) return;
       const msg = apiErrorMessage(err, 'Could not start highlights');
       setSummaryError(msg);
+      setSummaryStatus('failed');
       setError(msg);
       toast.error(msg);
     } finally {
@@ -834,18 +847,25 @@ export default function Learn() {
     if (!lessonId) return;
     if (step !== STEPS.VOCAB && step !== STEPS.STUDY) return;
     if (displaySummary(summary).source !== 'empty') return;
-    if (prepareJob?.status === 'pending') return;
+    if (prepareJob?.status === 'pending' || summaryStatus === 'pending') return;
     if (highlightsAttemptedRef.current.has(lessonId)) return;
     highlightsAttemptedRef.current.add(lessonId);
     generateHighlights({ auto: true });
-  }, [lessonId, step, summary, generateHighlights, prepareJob?.status]);
+  }, [lessonId, step, summary, generateHighlights, prepareJob?.status, summaryStatus]);
 
   useEffect(() => {
     if (!lessonId) return;
     const vocabStep = (prepareJob?.steps || []).find((step) => step.id === 'vocab');
+    const highlightsBusy = isHighlightsGenerating({
+      summary,
+      summaryStatus,
+      highlightsLoading,
+      prepareJob,
+    });
     const shouldPoll =
       prepareJob?.status === 'pending' ||
-      (vocabStep && vocabStep.state !== 'done' && vocabStep.state !== 'failed');
+      (vocabStep && vocabStep.state !== 'done' && vocabStep.state !== 'failed') ||
+      highlightsBusy;
     if (!shouldPoll) return;
     let cancelled = false;
     const tick = async () => {
@@ -855,6 +875,7 @@ export default function Learn() {
         const data = poll.data || {};
         if (data.prepareJob) setPrepareJob(data.prepareJob);
         if (data.prepareStep) setPrepareStep(data.prepareStep);
+        if (data.summaryStatus) setSummaryStatus(data.summaryStatus);
         if (data.summary) setSummary(data.summary);
         if (data.summaryStatus === 'failed' && data.summaryError) {
           setSummaryError(data.summaryError);
@@ -889,7 +910,7 @@ export default function Learn() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [lessonId, prepareJob?.status]);
+  }, [lessonId, prepareJob?.status, summary, summaryStatus, highlightsLoading]);
 
   const persistProgress = useCallback(async (id, payload) => {
     if (!id) return;
@@ -1042,6 +1063,7 @@ export default function Learn() {
         ? data.summaryError || 'Could not generate highlights for this video'
         : ''
     );
+    setSummaryStatus(data.summaryStatus || '');
     setChapters(Array.isArray(data.chapters) ? data.chapters : []);
     setStudyWords(data.studyWords || []);
     setQuestions(data.questions || []);
@@ -1078,6 +1100,7 @@ export default function Learn() {
       setCues([]);
       setSummary('');
       setSummaryError('');
+      setSummaryStatus('pending');
       setChapters([]);
       setQuestions([]);
       setHistory((prev) =>
@@ -1130,6 +1153,7 @@ export default function Learn() {
             ? data.summaryError || 'Could not generate highlights for this video'
             : ''
         );
+        setSummaryStatus(data.summaryStatus || '');
         setChapters(Array.isArray(data.chapters) ? data.chapters : []);
         setVocabulary(data.vocabulary || []);
         setSearchParams({ lesson: id }, { replace: true });
@@ -1445,6 +1469,7 @@ export default function Learn() {
     setCues([]);
     setSummary('');
     setSummaryError('');
+    setSummaryStatus('');
     setChapters([]);
     setStudyWords([]);
     setSearchParams({}, { replace: true });
@@ -1482,6 +1507,13 @@ export default function Learn() {
       }
     }
   };
+
+  const highlightsGenerating = isHighlightsGenerating({
+    summary,
+    summaryStatus,
+    highlightsLoading,
+    prepareJob,
+  });
 
   // ── Step indicator ───────────────────────────────────
   const steps = [
@@ -1607,6 +1639,7 @@ export default function Learn() {
             onBack={handleRetry}
             onGenerateHighlights={() => generateHighlights({ auto: false })}
             highlightsLoading={highlightsLoading}
+            highlightsGenerating={highlightsGenerating}
             saving={saving}
             preparingVocab={prepareJob?.status === 'pending' && !vocabulary.length}
           />
@@ -1625,6 +1658,8 @@ export default function Learn() {
             onAddStudyWord={handleAddStudyWord}
             onGenerateHighlights={() => generateHighlights({ auto: false })}
             highlightsLoading={highlightsLoading}
+            highlightsGenerating={highlightsGenerating}
+            summaryError={summaryError}
             quizLoading={loading}
           />
         )}

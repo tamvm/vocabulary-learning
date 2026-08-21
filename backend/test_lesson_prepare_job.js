@@ -429,6 +429,40 @@ assert(
   'repairs ready lessons whose vocab words are not in the transcript'
 );
 
+resetPrepareJobsForTests();
+assert(
+  resumeLessonPrepareIfNeeded({
+    lesson: {
+      id: 'empty-highlights-ready',
+      prepare_status: 'ready',
+      transcript_text: 'Satellites stay in orbit around the earth. ' + 'A'.repeat(80),
+      vocabulary_snapshot: [{ word: 'orbit', definition: 'curved path of a satellite' }],
+      summary: '',
+      summary_status: 'idle',
+      updated_at: new Date(Date.now() - 120000).toISOString(),
+    },
+    run: () => {},
+  }) === true,
+  'repairs ready lessons with empty idle highlights'
+);
+
+resetPrepareJobsForTests();
+assert(
+  resumeLessonPrepareIfNeeded({
+    lesson: {
+      id: 'stuck-pending-highlights',
+      prepare_status: 'ready',
+      transcript_text: 'Satellites stay in orbit around the earth. ' + 'A'.repeat(80),
+      vocabulary_snapshot: [{ word: 'orbit', definition: 'curved path of a satellite' }],
+      summary: '',
+      summary_status: 'pending',
+      updated_at: new Date(Date.now() - 120000).toISOString(),
+    },
+    run: () => {},
+  }) === true,
+  'repairs ready lessons stuck with pending highlights'
+);
+
 const stuckLesson = {
   id: 'stuck-after-transcript',
   prepare_status: 'pending',
