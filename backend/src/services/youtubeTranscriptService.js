@@ -5,6 +5,25 @@ import os from 'os';
 import { transcript24Service } from './transcript24Service.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
 
+/** Collapse yt-dlp stderr (version warnings, 429, bot-check) into one user-facing line. */
+export function summarizeYtDlpFailure(stderr = '') {
+  const text = String(stderr);
+  if (/HTTP Error 429/i.test(text) || /Too Many Requests/i.test(text)) {
+    return 'YouTube rate-limited yt-dlp (HTTP 429). /learn uses Transcript24 — set TRANSCRIPT24_API_KEY instead of relying on yt-dlp.';
+  }
+  if (/Sign in to confirm/i.test(text) || /not a bot/i.test(text)) {
+    return 'YouTube blocked yt-dlp (bot check). /learn uses Transcript24 — set TRANSCRIPT24_API_KEY or probe the live API with --remote.';
+  }
+  const lastError = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^ERROR:/i.test(line))
+    .pop();
+  if (lastError) return lastError.replace(/^ERROR:\s*/i, '').trim();
+  const compact = text.replace(/\s+/g, ' ').trim();
+  return compact ? compact.slice(0, 280) : 'yt-dlp failed';
+}
+
 class YouTubeTranscriptService {
   constructor() {
     this.outputDir = path.join(os.tmpdir(), 'magic-english-transcripts');
@@ -324,7 +343,7 @@ class YouTubeTranscriptService {
               finish(reject, new Error('Failed to parse video information'));
             }
           } else {
-            finish(reject, new Error(`Failed to extract video info: ${stderr}`));
+            finish(reject, new Error(summarizeYtDlpFailure(stderr)));
           }
         });
       });
@@ -378,7 +397,7 @@ class YouTubeTranscriptService {
    * Always returns cues when successful.
    *
    * @param {string} url
-   * @param {{ transcript24TimeoutMs?: number, metaTimeoutMs?: number }} [options]
+   * @param {{ transcript24TimeoutMs?: number, metaTimeoutMs?: number, allowYtDlpFallback?: boolean, skipYtDlpMeta?: boolean }} [options]
    */
   async processYouTubeUrl(url, options = {}) {
     if (!this.isYouTubeUrl(url)) {
@@ -387,6 +406,8 @@ class YouTubeTranscriptService {
 
     const transcript24TimeoutMs = options.transcript24TimeoutMs ?? 60000;
     const metaTimeoutMs = options.metaTimeoutMs ?? 8000;
+    const allowYtDlpFallback = options.allowYtDlpFallback === true;
+    const skipYtDlpMeta = Boolean(options.skipYtDlpMeta);
 
     // 1) Transcript24 primary
     if (transcript24Service.isConfigured()) {
@@ -400,21 +421,23 @@ class YouTubeTranscriptService {
         // Optionally enrich chapters/thumbnail from yt-dlp (best-effort, short timeout)
         let chapters = Array.isArray(t24.videoInfo?.chapters) ? t24.videoInfo.chapters : [];
         let enrichedInfo = { ...t24.videoInfo };
-        try {
-          const ytMeta = await this.extractVideoInfo(url, { timeoutMs: metaTimeoutMs });
-          if ((!chapters || !chapters.length) && ytMeta.chapters?.length) {
-            chapters = ytMeta.chapters;
+        if (!skipYtDlpMeta) {
+          try {
+            const ytMeta = await this.extractVideoInfo(url, { timeoutMs: metaTimeoutMs });
+            if ((!chapters || !chapters.length) && ytMeta.chapters?.length) {
+              chapters = ytMeta.chapters;
+            }
+            enrichedInfo = {
+              ...enrichedInfo,
+              title: enrichedInfo.title || ytMeta.title,
+              duration: enrichedInfo.duration ?? ytMeta.duration,
+              thumbnail: enrichedInfo.thumbnail || ytMeta.thumbnail,
+              channel: enrichedInfo.channel || ytMeta.channel || ytMeta.uploader,
+              description: enrichedInfo.description || ytMeta.description,
+            };
+          } catch (metaErr) {
+            console.warn('yt-dlp meta enrich skipped:', metaErr.message);
           }
-          enrichedInfo = {
-            ...enrichedInfo,
-            title: enrichedInfo.title || ytMeta.title,
-            duration: enrichedInfo.duration ?? ytMeta.duration,
-            thumbnail: enrichedInfo.thumbnail || ytMeta.thumbnail,
-            channel: enrichedInfo.channel || ytMeta.channel || ytMeta.uploader,
-            description: enrichedInfo.description || ytMeta.description,
-          };
-        } catch (metaErr) {
-          console.warn('yt-dlp meta enrich skipped:', metaErr.message);
         }
 
         return {
@@ -438,9 +461,21 @@ class YouTubeTranscriptService {
         console.warn(
           `Transcript24 failed (${t24Err.code || 'error'}): ${t24Err.message}. Falling back to yt-dlp.`
         );
+        if (!allowYtDlpFallback) {
+          return {
+            success: false,
+            error: `Transcript24 failed: ${t24Err.message}. yt-dlp fallback skipped (YouTube blocks it from most laptops).`,
+          };
+        }
       }
-    } else {
+    } else if (allowYtDlpFallback) {
       console.log('TRANSCRIPT24_API_KEY not set — using yt-dlp transcript path');
+    } else {
+      return {
+        success: false,
+        error:
+          'TRANSCRIPT24_API_KEY is not set. yt-dlp fallback skipped — YouTube returns 429 / bot-check from local machines. Copy the key into backend/.env or probe the live API with --remote.',
+      };
     }
 
     // 2) yt-dlp fallback (often unavailable in Alpine/prod — keep short failure path)
@@ -449,7 +484,7 @@ class YouTubeTranscriptService {
     } catch (error) {
       return {
         success: false,
-        error: error.message,
+        error: summarizeYtDlpFailure(error.message || ''),
       };
     }
   }

@@ -8,7 +8,7 @@
     "dev": "nodemon --max-old-space-size=8192 src/server.js",
     "start": "node --max-old-space-size=8192 src/server.js",
     "build": "echo 'No build needed for Node.js backend'",
-    "test": "node test_quiz_fsrs.js && node test_assert_public_http_url.js && node test_postgrest_filter.js && node test_transcript24_cues.js && node test_youtube_analyze_helpers.js && node test_video_lesson_progress.js && node test_lesson_summary_normalize.js && node test_free_dictionary_map.js && node test_ai_config.js && node test_chat_message_text.js && node test_lesson_prepare_job.js && node test_vocab_candidates.js"
+    "test": "node test_quiz_fsrs.js && node test_assert_public_http_url.js && node test_postgrest_filter.js && node test_transcript24_cues.js && node test_youtube_analyze_helpers.js && node test_video_lesson_progress.js && node test_lesson_summary_normalize.js && node test_free_dictionary_map.js && node test_ai_config.js && node test_chat_message_text.js && node test_lesson_prepare_job.js && node test_ytdlp_error.js && node test_vocab_candidates.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

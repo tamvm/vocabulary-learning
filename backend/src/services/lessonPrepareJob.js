@@ -345,6 +345,7 @@ async function defaultFetchTranscript(videoUrl) {
   return youtubeTranscriptService.processYouTubeUrl(videoUrl, {
     transcript24TimeoutMs: 120000,
     metaTimeoutMs: 15000,
+    skipYtDlpMeta: true,
   });
 }
 
