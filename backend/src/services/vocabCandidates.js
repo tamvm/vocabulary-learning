@@ -252,17 +252,29 @@ export function extractVocabCandidates(text, options = {}) {
     bump(lemma, 'word');
   }
 
+  // Hapax C1/off-list words (disparity) lose a 36-cap to repeats unless they
+  // sit next to a frequent topic lemma (wealth disparity).
+  const neighborCount = new Map();
+  for (let i = 0; i < lemmas.length; i++) {
+    const lemma = lemmas[i];
+    if (!counts.has(lemma)) continue;
+    const left = i > 0 ? counts.get(lemmas[i - 1]) || 0 : 0;
+    const right = i + 1 < lemmas.length ? counts.get(lemmas[i + 1]) || 0 : 0;
+    neighborCount.set(lemma, Math.max(neighborCount.get(lemma) || 0, left, right));
+  }
+
   const scored = [];
   for (const [word, count] of counts) {
     if (kinds.get(word) === 'word' && count === 1 && word.length <= 4) continue;
     const level = word.includes(' ') ? null : lemmaLevel(word);
     const rarity = word.includes(' ') ? 4 : level ? Math.max(1, userLevelRank(cefr) - LEVEL_RANK[level] + 1) : 3;
     const lengthBonus = word.length >= 8 ? 1.2 : 1;
+    const topicBoost = 1 + 0.15 * Math.min(neighborCount.get(word) || 0, 8);
     scored.push({
       word,
       count,
       level: level || '',
-      score: count * rarity * lengthBonus,
+      score: count * rarity * lengthBonus * topicBoost,
       context: contextFor(word, cues, text),
     });
   }
