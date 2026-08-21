@@ -2,6 +2,17 @@
 
 This directory contains utility scripts for managing the Magic English application.
 
+## Learn vocab probe
+
+Trace why `/learn` returns no words for a YouTube URL. Default video is the Dalio / AI-bubble short.
+
+```bash
+node scripts/learn-vocab-probe.js --local --cefr B2 --url 'https://www.youtube.com/watch?v=WZ7mmTrSgxI'
+node scripts/learn-vocab-probe.js --direct --url 'https://www.youtube.com/watch?v=WZ7mmTrSgxI'
+```
+
+`--local` ranks a caption fixture (no YouTube / AI). `--direct` uses Transcript24 then the same ranker (`TRANSCRIPT24_API_KEY` in `backend/.env` or `~/.openclaw/openclaw.json` on the Hetzner host). On GitHub: Actions → **Learn vocab probe** → Run workflow (self-hosted runner on openclaw).
+
 ## Supabase keep-alive
 
 Ping free-tier Supabase so the project does not auto-pause. See [docs/supabase-keepalive.md](../docs/supabase-keepalive.md).

@@ -1,0 +1,43 @@
+name: Learn vocab probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: YouTube URL
+        required: false
+        default: 'https://www.youtube.com/watch?v=WZ7mmTrSgxI'
+      cefr:
+        description: Learner CEFR
+        required: false
+        default: 'B2'
+      direct:
+        description: Also fetch live transcript (Transcript24)
+        type: boolean
+        default: true
+
+jobs:
+  probe:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Probe local extractor
+        env:
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_CEFR: ${{ inputs.cefr }}
+        run: node scripts/learn-vocab-probe.js --local --cefr "$INPUT_CEFR" --url "$INPUT_URL"
+
+      - name: Probe live transcript
+        if: ${{ inputs.direct }}
+        env:
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_CEFR: ${{ inputs.cefr }}
+        run: node scripts/learn-vocab-probe.js --direct --cefr "$INPUT_CEFR" --url "$INPUT_URL"
