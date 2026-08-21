@@ -30,8 +30,14 @@ jobs:
           node-version-file: '.nvmrc'
 
       - name: Probe local extractor
-        run: node scripts/learn-vocab-probe.js --local --cefr "${{ inputs.cefr }}" --url "${{ inputs.url }}"
+        env:
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_CEFR: ${{ inputs.cefr }}
+        run: node scripts/learn-vocab-probe.js --local --cefr "$INPUT_CEFR" --url "$INPUT_URL"
 
       - name: Probe live transcript
         if: ${{ inputs.direct }}
-        run: node scripts/learn-vocab-probe.js --direct --cefr "${{ inputs.cefr }}" --url "${{ inputs.url }}"
+        env:
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_CEFR: ${{ inputs.cefr }}
+        run: node scripts/learn-vocab-probe.js --direct --cefr "$INPUT_CEFR" --url "$INPUT_URL"
