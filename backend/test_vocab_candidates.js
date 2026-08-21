@@ -123,4 +123,28 @@ assert(
   'keeps crowding out / crowding'
 );
 
+assert(
+  extractVocabCandidates('There is a significant disparity in income levels.', {
+    cefr: 'B2',
+    limit: 20,
+  }).some((item) => item.word === 'disparity'),
+  'extracts C1 disparity from a short sentence'
+);
+
+const crowdingFillers = [
+  'happen', 'fight', 'spend', 'taiwan', 'asset', 'billion', 'rising', 'burst',
+  'worry', 'cannot', 'chip', 'crash', 'desire', 'easing', 'plaque', 'speak',
+  'strait', 'closer', 'kevin', 'fifty', 'dynamic', 'relative', 'implication',
+  'productivity', 'ultimately', 'conflict', 'containment', 'optimistic',
+  'overextended', 'perspective', 'tightening', 'trillion', 'unattractive',
+  'wonderful', 'indicator', 'expensive',
+];
+const crowdedC1 = `${'wealth '.repeat(12)}${crowdingFillers.map((w) => `${w} ${w}`).join(' ')} such a wealth disparity between urban and rural areas.`;
+assert(
+  extractVocabCandidates(crowdedC1, { cefr: 'B2', limit: 36 }).some(
+    (item) => item.word === 'disparity'
+  ),
+  'C1 hapax disparity next to topic word wealth survives crowding'
+);
+
 console.log('test_vocab_candidates: OK');
