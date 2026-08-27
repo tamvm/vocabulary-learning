@@ -19,7 +19,7 @@
  *   --direct              Load backend/.env and call the provider from this process
  *   --word <word>         Word for analyze-word (default: serendipity)
  *   --expect-provider X   Fail if provider differs (opencode / opencode-go treated as aliases)
- *   --expect-model X      Fail if model differs (Coolify default: mimo-v2.5)
+ *   --expect-model X      Fail if model differs (Coolify default: deepseek-v4-flash)
  *   --skip-completion     Skip chat/analyze; only health + config + /models
  *   --help
  *
@@ -96,9 +96,9 @@ Remote (live Coolify API):
 Direct (this process, Coolify-equivalent env):
   AI_PROVIDER         opencode | opencode-go | openai | ollama-cloud | ollama-local
   AI_API_KEY          or OPENCODE_API_KEY
-  AI_MODEL            e.g. mimo-v2.5
+  AI_MODEL            e.g. deepseek-v4-flash
 
-  --expect-provider opencode --expect-model mimo-v2.5
+  --expect-provider opencode --expect-model deepseek-v4-flash
   --skip-completion
 `);
 }

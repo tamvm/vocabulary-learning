@@ -35,7 +35,7 @@ assert.throws(
   /empty content/
 );
 
-assert.deepEqual(withThinkingDisabled({ model: 'mimo-v2.5', messages: [] }).thinking, {
+assert.deepEqual(withThinkingDisabled({ model: 'deepseek-v4-flash', messages: [] }).thinking, {
   type: 'disabled',
 });
 assert.equal(withThinkingDisabled({ model: 'gpt-4o-mini' }).thinking, undefined);

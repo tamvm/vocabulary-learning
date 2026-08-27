@@ -58,7 +58,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 AI_PROVIDER=opencode
 AI_API_KEY=...                 # OpenCode Go key (OPENCODE_API_KEY also accepted)
-AI_MODEL=mimo-v2.5
+AI_MODEL=deepseek-v4-flash
 # AI_PROVIDER=opencode-go is accepted as an alias for the same endpoint
 # AI_PROVIDER=opencode/go is also accepted (same as opencode-go)
 
@@ -77,10 +77,10 @@ RATE_LIMIT_MAX=1000
 
 ```bash
 # Live API. Copy the browser session JWT (starts with eyJ), not AI_API_KEY.
-VOCA_ACCESS_TOKEN='…' npm run test:ai -- --remote --expect-provider opencode --expect-model mimo-v2.5
+VOCA_ACCESS_TOKEN='…' npm run test:ai -- --remote --expect-provider opencode --expect-model deepseek-v4-flash
 
 # Same keys locally or `docker exec` in the backend container:
-AI_PROVIDER=opencode AI_API_KEY='…' AI_MODEL=mimo-v2.5 npm run test:ai -- --direct --expect-model mimo-v2.5
+AI_PROVIDER=opencode AI_API_KEY='…' AI_MODEL=deepseek-v4-flash npm run test:ai -- --direct --expect-model deepseek-v4-flash
 ```
 
 `analyze-word` can succeed via Free Dictionary when the LLM is down; the remote probe **fails** if that fallback is used. Direct mode sends a tiny `chat/completions` ping.
