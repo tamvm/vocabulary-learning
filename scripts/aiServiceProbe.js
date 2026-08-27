@@ -39,7 +39,7 @@ export function hintForProbeFailure(kind) {
   if (kind === 'usage') {
     return '';
   }
-  return 'On Coolify backend check AI_PROVIDER, AI_API_KEY (or OPENCODE_API_KEY), AI_MODEL=mimo-v2.5, then redeploy.';
+  return 'On Coolify backend check AI_PROVIDER, AI_API_KEY (or OPENCODE_API_KEY), AI_MODEL=deepseek-v4-flash, then redeploy.';
 }
 
 export function classifyConfigBody(body) {

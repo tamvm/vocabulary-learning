@@ -75,17 +75,17 @@ class AIService {
       },
       'opencode': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        // Prefer mimo-v2.5 on OpenCode Go when AI_MODEL is unset.
-        defaultModel: 'mimo-v2.5',
+        // Prefer deepseek-v4-flash on OpenCode Go when AI_MODEL is unset.
+        defaultModel: 'deepseek-v4-flash',
       },
       // Alias used in Coolify / other apps (e.g. LLM_PROVIDER=opencode-go)
       'opencode-go': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        defaultModel: 'mimo-v2.5',
+        defaultModel: 'deepseek-v4-flash',
       },
       'opencode/go': {
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        defaultModel: 'mimo-v2.5',
+        defaultModel: 'deepseek-v4-flash',
       },
       'ollama-local': {
         baseUrl: 'http://localhost:11434',
