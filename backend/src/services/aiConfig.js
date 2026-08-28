@@ -40,6 +40,22 @@ export function providerNeedsApiKey(provider) {
   return KEYED_PROVIDERS.has(resolveAiProvider(provider));
 }
 
+/** Coolify / other apps sometimes use LLM_* instead of AI_*. AI_* wins when both are set. */
+export function readAiProviderEnv(env = process.env) {
+  const explicit = String(env.AI_PROVIDER || env.LLM_PROVIDER || '').trim();
+  if (explicit) return explicit;
+  if (String(env.OPENCODE_API_KEY || '').trim()) return 'opencode';
+  return 'openai';
+}
+
+export function readAiModelEnv(env = process.env, fallback = '') {
+  return String(env.AI_MODEL || env.LLM_MODEL || fallback || '').trim();
+}
+
+export function readAiApiKeyEnv(env = process.env) {
+  return String(env.AI_API_KEY || env.OPENCODE_API_KEY || '').trim();
+}
+
 export function configurationError({ provider, apiKey, knownProviders }) {
   const resolved = resolveAiProvider(provider);
   if (!knownProviders.has(resolved)) {

@@ -10,6 +10,9 @@ import {
   configurationError,
   createPublicAiError,
   lookupAiProviderConfig,
+  readAiApiKeyEnv,
+  readAiModelEnv,
+  readAiProviderEnv,
   resolveAiProvider,
 } from './aiConfig.js';
 import { withTimeout } from './youtubeAnalyzeHelpers.js';
@@ -93,21 +96,17 @@ class AIService {
       },
     };
 
-    const providerName = String(
-      process.env.AI_PROVIDER
-        || (String(process.env.OPENCODE_API_KEY || '').trim() ? 'opencode' : 'openai')
-    ).trim();
+    const providerName = readAiProviderEnv();
     const providerDefaults =
       lookupAiProviderConfig(this.providers, providerName) || {};
-    const configuredModel = String(
-      process.env.AI_MODEL || providerDefaults.defaultModel || 'gpt-4o-mini'
-    ).trim();
+    const configuredModel = readAiModelEnv(
+      process.env,
+      providerDefaults.defaultModel || 'gpt-4o-mini'
+    );
 
     this.config = {
       provider: providerName,
-      apiKey: String(
-        process.env.AI_API_KEY || process.env.OPENCODE_API_KEY || ''
-      ).trim(),
+      apiKey: readAiApiKeyEnv(),
       model: configuredModel,
       localHost: process.env.OLLAMA_LOCAL_HOST || 'http://localhost:11434',
     };

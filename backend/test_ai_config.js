@@ -8,6 +8,8 @@ import {
   configurationError,
   createPublicAiError,
   publicAiFailure,
+  readAiModelEnv,
+  readAiProviderEnv,
   resolveAiProvider,
   lookupAiProviderConfig,
 } from './src/services/aiConfig.js';
@@ -82,6 +84,25 @@ assert(
   lookupAiProviderConfig({ 'opencode/go': { id: 2 }, 'opencode-go': { id: 1 } }, 'opencode/go')
     .id === 2,
   'lookup prefers exact key'
+);
+
+assert(
+  readAiModelEnv({ LLM_MODEL: 'deepseek-v4-flash' }) === 'deepseek-v4-flash',
+  'LLM_MODEL alias'
+);
+assert(
+  readAiModelEnv({ AI_MODEL: 'gpt-4o-mini', LLM_MODEL: 'deepseek-v4-flash' }) ===
+    'gpt-4o-mini',
+  'AI_MODEL wins over LLM_MODEL'
+);
+assert(
+  readAiProviderEnv({ LLM_PROVIDER: 'opencode-go' }) === 'opencode-go',
+  'LLM_PROVIDER alias'
+);
+assert(
+  readAiProviderEnv({ AI_PROVIDER: 'openai', LLM_PROVIDER: 'opencode-go' }) ===
+    'openai',
+  'AI_PROVIDER wins over LLM_PROVIDER'
 );
 
 console.log('test_ai_config: OK');

@@ -59,6 +59,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 AI_PROVIDER=opencode
 AI_API_KEY=...                 # OpenCode Go key (OPENCODE_API_KEY also accepted)
 AI_MODEL=deepseek-v4-flash
+# LLM_MODEL is accepted as an alias for AI_MODEL (LLM_PROVIDER for AI_PROVIDER)
 # AI_PROVIDER=opencode-go is accepted as an alias for the same endpoint
 # AI_PROVIDER=opencode/go is also accepted (same as opencode-go)
 
