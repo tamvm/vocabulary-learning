@@ -5,6 +5,7 @@ import {
   parseAiJsonObject,
   normalizeLessonSummary,
   extractLessonSummaryRaw,
+  recoverLessonSummaryFromAiText,
 } from './lessonSummaryNormalize.js';
 import {
   configurationError,
@@ -1138,7 +1139,7 @@ ${transcript}
           { role: 'user', content: prompt },
         ],
         temperature: 0.2,
-        max_tokens: 900,
+        max_tokens: 1600,
       },
       { timeout }
     );
@@ -1151,6 +1152,10 @@ ${transcript}
     try {
       return parseAiJsonObject(content);
     } catch {
+      const recovered = recoverLessonSummaryFromAiText(content);
+      if (recovered) {
+        return { summary: recovered, chapters: [] };
+      }
       console.error('Failed to parse summary response:', content);
       throw new Error('Invalid AI response format for summary');
     }

@@ -86,6 +86,8 @@ export default function StepStudy({
   onAddStudyWord,
   onGenerateHighlights,
   highlightsLoading = false,
+  highlightsGenerating = false,
+  summaryError = '',
   quizLoading,
 }) {
   const playerRef = useRef(null);
@@ -391,7 +393,9 @@ export default function StepStudy({
           defaultOpen
           className="mb-4"
           onGenerate={onGenerateHighlights}
-          generating={highlightsLoading}
+          generating={highlightsGenerating || highlightsLoading}
+          busy={highlightsLoading}
+          error={summaryError}
         />
       ) : null}
 

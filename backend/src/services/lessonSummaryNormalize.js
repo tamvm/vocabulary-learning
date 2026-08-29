@@ -53,11 +53,67 @@ export function extractLessonSummaryRaw(parsed) {
   return '';
 }
 
+/**
+ * Models often return markdown bullets or truncated JSON instead of a
+ * parseable object. Recover a usable summary so highlights are not empty.
+ */
+export function recoverLessonSummaryFromAiText(content) {
+  if (!content || typeof content !== 'string') return '';
+  const cleaned = stripAiJsonFences(content).trim();
+  if (!cleaned) return '';
+
+  try {
+    const parsed = parseAiJsonObject(cleaned);
+    const normalized = normalizeLessonSummary(extractLessonSummaryRaw(parsed));
+    if (normalized) return normalized;
+  } catch {
+    // fall through to regex / markdown recovery
+  }
+
+  const summaryKey = cleaned.match(/"summary"\s*:\s*"((?:\\.|[^"\\])*)"?/);
+  if (summaryKey?.[1]) {
+    const normalized = normalizeLessonSummary(unescapeJsonStringFragment(summaryKey[1]));
+    if (normalized) return normalized;
+  }
+
+  const bulletLines = cleaned
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /^(?:[-*•]|\d+[.)])\s+\S/.test(line))
+    .map((line) => line.replace(/^(?:[-*•]|\d+[.)])\s+/, '').trim())
+    .filter((line) => line.length >= 12 && !/^[{"]/.test(line));
+
+  if (bulletLines.length >= 3) {
+    return normalizeLessonSummary(bulletLines);
+  }
+
+  return '';
+}
+
 function stripAiJsonFences(content) {
   return String(content || '')
     .replace(/```json\s*/gi, '')
     .replace(/```/g, '')
     .trim();
+}
+
+/** Unescape a JSON string fragment left-to-right so `\\n` stays backslash+n. */
+export function unescapeJsonStringFragment(raw) {
+  const text = String(raw || '');
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== '\\' || i + 1 >= text.length) {
+      out += text[i];
+      continue;
+    }
+    const next = text[i + 1];
+    i += 1;
+    if (next === 'n') out += '\n';
+    else if (next === '"') out += '"';
+    else if (next === '\\') out += '\\';
+    else out += next;
+  }
+  return out;
 }
 
 export function parseAiJsonObject(content) {

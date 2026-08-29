@@ -21,6 +21,7 @@ import {
   upsertHistoryLesson,
   prepareJobFromLesson,
   prepareStepLabel,
+  isHighlightsGenerating,
 } from './src/lib/learnSession.js';
 
 let failed = 0;
@@ -233,6 +234,55 @@ assertEqual(
   prepareStepLabel('vocab', '1/3'),
   'Finding vocabulary (1/3)…',
   'prepareStepLabel includes chunk progress'
+);
+
+assertEqual(
+  isHighlightsGenerating({
+    summary: '',
+    summaryStatus: '',
+    highlightsLoading: false,
+    prepareJob: {
+      status: 'pending',
+      steps: [
+        { id: 'transcript', state: 'done' },
+        { id: 'vocab', state: 'done' },
+        { id: 'highlights', state: 'running' },
+        { id: 'quiz', state: 'running' },
+      ],
+    },
+  }),
+  true,
+  'highlights panel is generating while prepare job is on highlights'
+);
+assertEqual(
+  isHighlightsGenerating({
+    summary: '',
+    summaryStatus: 'pending',
+    highlightsLoading: false,
+    prepareJob: { status: 'ready', steps: [] },
+  }),
+  true,
+  'highlights panel is generating while summaryStatus is pending'
+);
+assertEqual(
+  isHighlightsGenerating({
+    summary: '',
+    summaryStatus: 'failed',
+    highlightsLoading: false,
+    prepareJob: { status: 'ready', steps: [] },
+  }),
+  false,
+  'failed highlights are not treated as generating'
+);
+assertEqual(
+  isHighlightsGenerating({
+    summary: '- A takeaway about orbit.',
+    summaryStatus: 'ready',
+    highlightsLoading: false,
+    prepareJob: { status: 'ready', steps: [] },
+  }),
+  false,
+  'ready highlights are not generating'
 );
 
 if (failed) {

@@ -8,11 +8,13 @@ export default function LessonSummary({
   className = '',
   onGenerate,
   generating = false,
+  busy,
   error = '',
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { text, items, source } = displaySummary(summary);
   const canGenerate = typeof onGenerate === 'function';
+  const actionBusy = busy ?? generating;
 
   return (
     <div
@@ -28,7 +30,7 @@ export default function LessonSummary({
         <span className="flex-1 text-sm font-semibold text-gray-900 dark:text-white">
           Highlights
         </span>
-        {source === 'empty' && (
+        {source === 'empty' && !generating && (
           <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
             Unavailable
           </span>
@@ -61,15 +63,15 @@ export default function LessonSummary({
             <button
               type="button"
               onClick={onGenerate}
-              disabled={generating}
+              disabled={actionBusy}
               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-60 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
             >
-              {generating ? (
+              {actionBusy ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5" />
               )}
-              {generating ? 'Generating…' : error ? 'Try again' : 'Generate highlights'}
+              {actionBusy ? 'Generating…' : error ? 'Try again' : 'Generate highlights'}
             </button>
           ) : null}
         </div>

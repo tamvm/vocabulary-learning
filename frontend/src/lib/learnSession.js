@@ -1,3 +1,5 @@
+import { displaySummary } from './lessonSummary.js';
+
 export const PREPARE_STEP_ORDER = ['transcript', 'vocab', 'highlights', 'quiz'];
 
 const PREPARE_STEP_LABELS = {
@@ -61,6 +63,23 @@ export function prepareProgressOf(lesson) {
 
 export function isPreparingLesson(lesson) {
   return prepareStatusOf(lesson) === 'pending';
+}
+
+/** True while highlights are in-flight so the panel does not look empty. */
+export function isHighlightsGenerating({
+  summary = '',
+  summaryStatus = '',
+  highlightsLoading = false,
+  prepareJob = null,
+} = {}) {
+  if (highlightsLoading) return true;
+  if (displaySummary(summary).source !== 'empty') return false;
+  if (summaryStatus === 'failed') return false;
+  if (summaryStatus === 'pending') return true;
+  if (prepareJob?.status !== 'pending') return false;
+  const step = (prepareJob.steps || []).find((item) => item.id === 'highlights');
+  if (!step) return false;
+  return step.state === 'queued' || step.state === 'running';
 }
 
 /** Vocabulary snapshot exists; highlights/quiz may still be running. */

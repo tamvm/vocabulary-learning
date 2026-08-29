@@ -862,11 +862,16 @@ function stampResumeCooldown(lessonId, nowMs = Date.now()) {
 function lessonNeedsContentRepair(lesson) {
   if (!hasTranscriptText(lesson)) return false;
   if (vocabSnapshotNeedsRerun(lesson)) return true;
-  if (
-    !usableSummary(lesson?.summary, lesson?.transcript_text || '') &&
-    lesson?.summary_status === SUMMARY_STATUS.failed
-  ) {
-    return true;
+  if (!usableSummary(lesson?.summary, lesson?.transcript_text || '')) {
+    const status = lesson?.summary_status || SUMMARY_STATUS.idle;
+    // Retry failed, never-started, and stuck-pending (prepare already ready).
+    if (
+      status === SUMMARY_STATUS.failed ||
+      status === SUMMARY_STATUS.idle ||
+      status === SUMMARY_STATUS.pending
+    ) {
+      return true;
+    }
   }
   return false;
 }
